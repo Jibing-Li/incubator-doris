@@ -35,6 +35,13 @@ import java.util.List;
 public class InsertEvent extends MetastoreTableEvent {
     private final Table hmsTbl;
 
+    // for test
+    public InsertEvent(long eventId, String catalogName, String dbName,
+                          String tblName) {
+        super(eventId, catalogName, dbName, tblName);
+        this.hmsTbl = null;
+    }
+
     private InsertEvent(NotificationEvent event, String catalogName) {
         super(event, catalogName);
         Preconditions.checkArgument(getEventType().equals(MetastoreEventType.INSERT));
@@ -71,5 +78,22 @@ public class InsertEvent extends MetastoreTableEvent {
             throw new MetastoreNotificationException(
                     debugString("Failed to process event"), e);
         }
+    }
+
+    @Override
+    protected boolean canBeBatched(MetastoreEvent that) {
+        if (!(that instanceof MetastoreTableEvent) || !isSameTable(that)) {
+            return false;
+        }
+        if (that instanceof CreateTableEvent) {
+            return false;
+        }
+        if (that instanceof DropTableEvent) {
+            return false;
+        }
+        if (that instanceof AlterTableEvent) {
+            return !((AlterTableEvent) that).isRename() && !((AlterTableEvent) that).isView();
+        }
+        return true;
     }
 }

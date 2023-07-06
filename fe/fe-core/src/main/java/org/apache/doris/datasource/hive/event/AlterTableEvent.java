@@ -42,6 +42,16 @@ public class AlterTableEvent extends MetastoreTableEvent {
     private final boolean isRename;
     private final boolean isView;
 
+    // for test
+    public AlterTableEvent(long eventId, String catalogName, String dbName,
+                             String tblName, boolean isRename, boolean isView) {
+        super(eventId, catalogName, dbName, tblName);
+        this.isRename = isRename;
+        this.isView = isView;
+        this.tableBefore = null;
+        this.tableAfter = null;
+    }
+
     private AlterTableEvent(NotificationEvent event, String catalogName) {
         super(event, catalogName);
         Preconditions.checkArgument(MetastoreEventType.ALTER_TABLE.equals(getEventType()));
@@ -97,6 +107,14 @@ public class AlterTableEvent extends MetastoreTableEvent {
 
     }
 
+    public boolean isRename() {
+        return isRename;
+    }
+
+    public boolean isView() {
+        return isView;
+    }
+
     /**
      * If the ALTER_TABLE event is due a table rename, this method removes the old table
      * and creates a new table with the new name. Else, we just refresh table
@@ -123,5 +141,22 @@ public class AlterTableEvent extends MetastoreTableEvent {
             throw new MetastoreNotificationException(
                     debugString("Failed to process event"), e);
         }
+    }
+
+    @Override
+    protected boolean canBeBatched(MetastoreEvent that) {
+        if (!(that instanceof MetastoreTableEvent) || !isSameTable(that)) {
+            return false;
+        }
+        if (that instanceof DropTableEvent) {
+            return false;
+        }
+        if (that instanceof CreateTableEvent) {
+            return false;
+        }
+        if (that instanceof AlterTableEvent) {
+            return !((AlterTableEvent) that).isRename() && !((AlterTableEvent) that).isView();
+        }
+        return true;
     }
 }

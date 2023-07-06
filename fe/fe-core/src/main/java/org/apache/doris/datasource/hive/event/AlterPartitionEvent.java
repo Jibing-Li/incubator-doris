@@ -30,6 +30,7 @@ import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hadoop.hive.metastore.messaging.AlterPartitionMessage;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -43,6 +44,18 @@ public class AlterPartitionEvent extends MetastoreTableEvent {
     private final String partitionNameAfter;
     // true if this alter event was due to a rename operation
     private final boolean isRename;
+
+    // for test
+    public AlterPartitionEvent(long eventId, String catalogName, String dbName, String tblName,
+                                String partitionNameBefore, String partitionNameAfter) {
+        super(eventId, catalogName, dbName, tblName);
+        this.partitionNameBefore = partitionNameBefore;
+        this.partitionNameAfter = partitionNameAfter;
+        this.hmsTbl = null;
+        this.partitionAfter = null;
+        this.partitionBefore = null;
+        isRename = !partitionNameBefore.equalsIgnoreCase(partitionNameAfter);
+    }
 
     private AlterPartitionEvent(NotificationEvent event,
             String catalogName) {
@@ -93,5 +106,13 @@ public class AlterPartitionEvent extends MetastoreTableEvent {
             throw new MetastoreNotificationException(
                     debugString("Failed to process event"), e);
         }
+    }
+
+    @Override
+    protected boolean canBeBatched(MetastoreEvent event) {
+        return event instanceof AlterPartitionEvent
+                    && isSameTable(event)
+                    && Objects.equals(partitionBefore, ((AlterPartitionEvent) event).partitionBefore)
+                    && Objects.equals(partitionAfter, ((AlterPartitionEvent) event).partitionAfter);
     }
 }
