@@ -66,14 +66,16 @@ public class ShowTableStatsStmt extends ShowStmt {
                     .build();
 
     private final TableName tableName;
-
+    private final List<String> columnNames;
     private final PartitionNames partitionNames;
     private final boolean cached;
 
     private TableIf table;
 
-    public ShowTableStatsStmt(TableName tableName, PartitionNames partitionNames, boolean cached) {
+    public ShowTableStatsStmt(TableName tableName, List<String> columnNames,
+                              PartitionNames partitionNames, boolean cached) {
         this.tableName = tableName;
+        this.columnNames = columnNames;
         this.partitionNames = partitionNames;
         this.cached = cached;
     }
