@@ -509,7 +509,7 @@ public class Replica implements Writable {
         }
 
         if (this.version < expectedVersion) {
-            LOG.debug("replica version does not catch up with version: {}. replica: {}",
+            LOG.info("replica version does not catch up with version: {}. replica: {}",
                       expectedVersion, this);
             return false;
         }
