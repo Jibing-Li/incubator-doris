@@ -25,6 +25,7 @@ import org.apache.doris.catalog.TableIf;
 import org.apache.doris.common.Config;
 import org.apache.doris.common.DdlException;
 import org.apache.doris.common.Pair;
+import org.apache.doris.common.util.MasterDaemon;
 import org.apache.doris.common.util.TimeUtils;
 import org.apache.doris.datasource.CatalogIf;
 import org.apache.doris.datasource.hive.HMSExternalTable;
@@ -39,23 +40,40 @@ import org.apache.logging.log4j.Logger;
 
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-public class StatisticsAutoCollector extends StatisticsCollector {
+public class StatisticsAutoCollector extends MasterDaemon {
 
     private static final Logger LOG = LogManager.getLogger(StatisticsAutoCollector.class);
 
+    protected final AnalysisTaskExecutor analysisTaskExecutor;
+
     public StatisticsAutoCollector() {
-        super("Automatic Analyzer",
-                TimeUnit.MINUTES.toMillis(Config.auto_check_statistics_in_minutes),
-                new AnalysisTaskExecutor(Config.auto_analyze_simultaneously_running_task_num,
-                        StatisticConstants.TASK_QUEUE_CAP));
+        super("Automatic Analyzer", TimeUnit.MINUTES.toMillis(Config.auto_check_statistics_in_minutes));
+        this.analysisTaskExecutor = new AnalysisTaskExecutor(Config.auto_analyze_simultaneously_running_task_num,
+                StatisticConstants.TASK_QUEUE_CAP);
     }
 
     @Override
+    protected void runAfterCatalogReady() {
+        if (!Env.getCurrentEnv().isMaster()) {
+            return;
+        }
+        if (!StatisticsUtil.statsTblAvailable()) {
+            LOG.info("Stats table not available, skip");
+            return;
+        }
+        if (Env.isCheckpointThread()) {
+            return;
+        }
+        collect();
+    }
+
     protected void collect() {
         if (canCollect()) {
             analyzeAll();
@@ -131,6 +149,24 @@ public class StatisticsAutoCollector extends StatisticsCollector {
                 continue;
             }
         }
+    }
+
+    // Analysis job created by the system
+    protected void createSystemAnalysisJob(AnalysisInfo jobInfo)
+            throws DdlException {
+        if (jobInfo.jobColumns.isEmpty()) {
+            // No statistics need to be collected or updated
+            return;
+        }
+        Map<Long, BaseAnalysisTask> analysisTasks = new HashMap<>();
+        AnalysisManager analysisManager = Env.getCurrentEnv().getAnalysisManager();
+        analysisManager.createTaskForEachColumns(jobInfo, analysisTasks, false);
+        if (StatisticsUtil.isExternalTable(jobInfo.catalogId, jobInfo.dbId, jobInfo.tblId)) {
+            analysisManager.createTableLevelTaskForExternalTable(jobInfo, analysisTasks, false);
+        }
+        Env.getCurrentEnv().getAnalysisManager().constructJob(jobInfo, analysisTasks.values());
+        Env.getCurrentEnv().getAnalysisManager().registerSysJob(jobInfo, analysisTasks);
+        analysisTasks.values().forEach(analysisTaskExecutor::submitTask);
     }
 
     protected List<AnalysisInfo> constructAnalysisInfo(DatabaseIf<? extends TableIf> db) {
