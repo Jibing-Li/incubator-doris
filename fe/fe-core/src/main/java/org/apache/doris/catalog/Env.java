@@ -258,6 +258,8 @@ import org.apache.doris.statistics.AnalysisManager;
 import org.apache.doris.statistics.StatisticsAutoCollector;
 import org.apache.doris.statistics.StatisticsCache;
 import org.apache.doris.statistics.StatisticsCleaner;
+import org.apache.doris.statistics.StatisticsJobAppender;
+import org.apache.doris.statistics.StatisticsJobAppender.Priority;
 import org.apache.doris.statistics.query.QueryStats;
 import org.apache.doris.system.Backend;
 import org.apache.doris.system.Frontend;
@@ -541,6 +543,8 @@ public class Env {
     private final LoadManagerAdapter loadManagerAdapter;
 
     private StatisticsAutoCollector statisticsAutoCollector;
+    private StatisticsJobAppender statisticsHighAppender;
+    private StatisticsJobAppender statisticsLowAppender;
 
     private HiveTransactionMgr hiveTransactionMgr;
 
@@ -782,6 +786,8 @@ public class Env {
         this.analysisManager = new AnalysisManager();
         this.statisticsCleaner = new StatisticsCleaner();
         this.statisticsAutoCollector = new StatisticsAutoCollector();
+        this.statisticsHighAppender = new StatisticsJobAppender("StatisticsHighAppender", Priority.HIGH);
+        this.statisticsLowAppender = new StatisticsJobAppender("StatisticsLowAppender", Priority.LOW);
         this.globalFunctionMgr = new GlobalFunctionMgr();
         this.workloadGroupMgr = new WorkloadGroupMgr();
         this.workloadSchedPolicyMgr = new WorkloadSchedPolicyMgr();
@@ -1079,12 +1085,6 @@ public class Env {
         if (!Config.edit_log_type.equalsIgnoreCase("bdb")) {
             // If not using bdb, we need to notify the FE type transfer manually.
             notifyNewFETypeTransfer(FrontendNodeType.MASTER);
-        }
-        if (statisticsCleaner != null) {
-            statisticsCleaner.start();
-        }
-        if (statisticsAutoCollector != null) {
-            statisticsAutoCollector.start();
         }
 
         queryCancelWorker.start();
@@ -1624,6 +1624,18 @@ public class Env {
             if (analysisManager != null) {
                 analysisManager.getStatisticsCache().preHeat();
             }
+            if (statisticsCleaner != null) {
+                statisticsCleaner.start();
+            }
+            if (statisticsAutoCollector != null) {
+                statisticsAutoCollector.start();
+            }
+            if (statisticsHighAppender != null) {
+                statisticsHighAppender.start();
+            }
+            if (statisticsLowAppender != null) {
+                statisticsLowAppender.start();
+            }
         } catch (Throwable e) {
             // When failed to transfer to master, we need to exit the process.
             // Otherwise, the process will be in an unknown state.
@@ -1753,7 +1765,6 @@ public class Env {
         WorkloadSchedPolicyPublisher wpPublisher = new WorkloadSchedPolicyPublisher(this);
         topicPublisherThread.addToTopicPublisherList(wpPublisher);
         topicPublisherThread.start();
-
     }
 
     // start threads that should running on all FE
@@ -6325,6 +6336,14 @@ public class Env {
 
     public StatisticsAutoCollector getStatisticsAutoCollector() {
         return statisticsAutoCollector;
+    }
+
+    public StatisticsJobAppender getStatisticsHighAppender() {
+        return statisticsHighAppender;
+    }
+
+    public StatisticsJobAppender getStatisticsLowAppender() {
+        return statisticsLowAppender;
     }
 
     public NereidsSqlCacheManager getSqlCacheManager() {
