@@ -81,6 +81,7 @@ import org.apache.doris.nereids.DorisParser.AlterTableAddRollupContext;
 import org.apache.doris.nereids.DorisParser.AlterTableClauseContext;
 import org.apache.doris.nereids.DorisParser.AlterTableContext;
 import org.apache.doris.nereids.DorisParser.AlterTableDropRollupContext;
+import org.apache.doris.nereids.DorisParser.AlterViewCommentContext;
 import org.apache.doris.nereids.DorisParser.AlterViewContext;
 import org.apache.doris.nereids.DorisParser.AlterWorkloadGroupContext;
 import org.apache.doris.nereids.DorisParser.AlterWorkloadPolicyContext;
@@ -498,6 +499,7 @@ import org.apache.doris.nereids.trees.plans.commands.AlterSqlBlockRuleCommand;
 import org.apache.doris.nereids.trees.plans.commands.AlterStorageVaultCommand;
 import org.apache.doris.nereids.trees.plans.commands.AlterTableCommand;
 import org.apache.doris.nereids.trees.plans.commands.AlterViewCommand;
+import org.apache.doris.nereids.trees.plans.commands.AlterViewCommentCommand;
 import org.apache.doris.nereids.trees.plans.commands.AlterWorkloadGroupCommand;
 import org.apache.doris.nereids.trees.plans.commands.AlterWorkloadPolicyCommand;
 import org.apache.doris.nereids.trees.plans.commands.CallCommand;
@@ -1291,6 +1293,13 @@ public class LogicalPlanBuilder extends DorisParserBaseVisitor<Object> {
         AlterViewInfo info = new AlterViewInfo(new TableNameInfo(nameParts), querySql,
                 ctx.cols == null ? Lists.newArrayList() : visitSimpleColumnDefs(ctx.cols));
         return new AlterViewCommand(info);
+    }
+
+    @Override
+    public LogicalPlan visitAlterViewComment(AlterViewCommentContext ctx) {
+        List<String> nameParts = visitMultipartIdentifier(ctx.name);
+        AlterViewInfo info = new AlterViewInfo(new TableNameInfo(nameParts), ctx.comment.getText());
+        return new AlterViewCommentCommand(info);
     }
 
     @Override

@@ -33,6 +33,7 @@ import org.apache.doris.nereids.trees.plans.commands.AlterRoleCommand;
 import org.apache.doris.nereids.trees.plans.commands.AlterSqlBlockRuleCommand;
 import org.apache.doris.nereids.trees.plans.commands.AlterTableCommand;
 import org.apache.doris.nereids.trees.plans.commands.AlterViewCommand;
+import org.apache.doris.nereids.trees.plans.commands.AlterViewCommentCommand;
 import org.apache.doris.nereids.trees.plans.commands.AlterWorkloadGroupCommand;
 import org.apache.doris.nereids.trees.plans.commands.AlterWorkloadPolicyCommand;
 import org.apache.doris.nereids.trees.plans.commands.CallCommand;
@@ -367,6 +368,10 @@ public interface CommandVisitor<R, C> {
 
     default R visitAlterViewCommand(AlterViewCommand alterViewCommand, C context) {
         return visitCommand(alterViewCommand, context);
+    }
+
+    default R visitAlterViewCommentCommand(AlterViewCommentCommand alterViewCommentCommand, C context) {
+        return visitCommand(alterViewCommentCommand, context);
     }
 
     default R visitDropCatalogCommand(DropCatalogCommand dropCatalogCommand, C context) {
