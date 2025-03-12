@@ -2910,6 +2910,31 @@ public class StmtExecutor {
             }
             context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());
         }
+        if (numColumns > 0) {
+            List<String> colNames = Lists.newArrayList();
+            colNames.add("r_regionkey");
+            colNames.add("r_name");
+            colNames.add("r_comment");
+            List<ScalarType> types = Lists.newArrayList();
+            types.add(Type.INT);
+            types.add(Type.STRING);
+            types.add(Type.STRING);
+            for (int i = 0; i < colNames.size(); ++i) {
+                serializer.reset();
+                // serializer.writeField(colNames.get(i), Type.fromPrimitiveType(types.get(i)));
+                serializer.writeField(colNames.get(i), types.get(i));
+                context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());
+            }
+            serializer.reset();
+            if (!context.getMysqlChannel().clientDeprecatedEOF()) {
+                MysqlEofPacket eofPacket = new MysqlEofPacket(context.getState());
+                eofPacket.writeTo(serializer);
+            } else {
+                MysqlOkPacket okPacket = new MysqlOkPacket(context.getState());
+                okPacket.writeTo(serializer);
+            }
+            context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());
+        }
         context.getMysqlChannel().flush();
         context.getState().setNoop();
     }
