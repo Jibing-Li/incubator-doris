@@ -217,15 +217,16 @@ public class BindRelation extends OneAnalysisRuleFactory {
             // This tabletIds is set manually, so need to set specifiedTabletIds
             scan = scan.withManuallySpecifiedTabletIds(tabletIds);
         }
-        if (needGenerateLogicalAggForRandomDistAggTable(scan)) {
-            // it's a random distribution agg table
-            // add agg on olap scan
-            return preAggForRandomDistribution(scan);
-        } else {
-            // it's a duplicate, unique or hash distribution agg table
-            // add delete sign filter on olap scan if needed
-            return checkAndAddDeleteSignFilter(scan, ConnectContext.get(), (OlapTable) table);
-        }
+        return scan.withPreAggStatus(PreAggStatus.on());
+        // if (needGenerateLogicalAggForRandomDistAggTable(scan)) {
+        //     // it's a random distribution agg table
+        //     // add agg on olap scan
+        //     return preAggForRandomDistribution(scan);
+        // } else {
+        //     // it's a duplicate, unique or hash distribution agg table
+        //     // add delete sign filter on olap scan if needed
+        //     return checkAndAddDeleteSignFilter(scan, ConnectContext.get(), (OlapTable) table);
+        // }
     }
 
     private boolean needGenerateLogicalAggForRandomDistAggTable(LogicalOlapScan olapScan) {

@@ -172,7 +172,7 @@ public class OlapAnalysisTask extends BaseAnalysisTask {
         long targetSampleRows = getSampleRows();
         OlapTable olapTable = (OlapTable) tbl;
         boolean forPartitionColumn = tbl.isPartitionColumn(col.getName());
-        long avgTargetRowsPerPartition = targetSampleRows / Math.max(olapTable.getPartitions().size(), 1);
+        long avgRowsPerPartition = targetSampleRows / Math.max(olapTable.getPartitions().size(), 1) + 1;
         List<Long> sampleTabletIds = new ArrayList<>();
         long selectedRows = 0;
         boolean enough = false;
@@ -182,6 +182,7 @@ public class OlapAnalysisTask extends BaseAnalysisTask {
         long largeTabletId = 0;
         long largeTabletRows = Long.MAX_VALUE;
         for (Partition p : sortedPartitions) {
+            long partitionSelectedRows = 0;
             MaterializedIndex materializedIndex = info.indexId == -1 ? p.getBaseIndex() : p.getIndex(info.indexId);
             if (materializedIndex == null) {
                 continue;
@@ -190,13 +191,9 @@ public class OlapAnalysisTask extends BaseAnalysisTask {
             if (ids.isEmpty()) {
                 continue;
             }
-            long avgRowsPerTablet = Math.max(materializedIndex.getRowCount() / ids.size(), 1);
-            long tabletCounts = Math.max(avgTargetRowsPerPartition / avgRowsPerTablet
-                    + (avgTargetRowsPerPartition % avgRowsPerTablet != 0 ? 1 : 0), 1);
-            tabletCounts = Math.min(tabletCounts, ids.size());
             long seek = tableSample.getSeek() != -1 ? tableSample.getSeek()
                     : (long) (new SecureRandom().nextDouble() * ids.size());
-            for (int i = 0; i < tabletCounts; i++) {
+            for (int i = 0; i < ids.size(); i++) {
                 int seekTid = (int) ((i + seek) % ids.size());
                 long tabletId = ids.get(seekTid);
                 long tabletRows = materializedIndex.getTablet(tabletId).getMinReplicaRowCount(p.getVisibleVersion());
@@ -212,15 +209,19 @@ public class OlapAnalysisTask extends BaseAnalysisTask {
                     }
                     continue;
                 }
-                sampleTabletIds.add(tabletId);
                 if (tabletRows > 0) {
+                    sampleTabletIds.add(tabletId);
                     selectedRows += tabletRows;
+                    partitionSelectedRows += tabletRows;
                     // For regular column, will stop adding more tablets when selected tablets'
                     // row count is more than the target sample rows.
                     // But for partition columns, will not stop adding. For ndv sample accuracy,
                     // better to choose at least one tablet in each partition.
                     if (selectedRows >= targetSampleRows && !forPartitionColumn) {
                         enough = true;
+                        break;
+                    }
+                    if (partitionSelectedRows > avgRowsPerPartition) {
                         break;
                     }
                 }
