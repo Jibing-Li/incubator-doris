@@ -619,7 +619,18 @@ public class StmtExecutor {
 
         try {
             try {
-                executeByNereids(queryId);
+                parsedStmt = null;
+                planner = null;
+                isForwardedToMaster = null;
+                redirectStatus = null;
+                // Attention: currently exception from nereids does not mean an Exception to user terminal
+                // unless user does not allow fallback to lagency planner. But state of query
+                // has already been set to Error in this case, it will have some side effect on profile result
+                // and audit log. So we need to reset state to OK if query cancel be processd by lagency.
+                context.getState().reset();
+                context.getState().setNereids(false);
+                executeByLegacy(queryId);
+                //executeByNereids(queryId);
             } catch (NereidsException | ParseException e) {
                 if (context.getMinidump() != null && context.getMinidump().toString(4) != null) {
                     MinidumpUtils.saveMinidumpString(context.getMinidump(), DebugUtil.printId(context.queryId()));
