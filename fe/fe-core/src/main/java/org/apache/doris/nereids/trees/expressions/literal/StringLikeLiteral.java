@@ -19,11 +19,16 @@ package org.apache.doris.nereids.trees.expressions.literal;
 
 import org.apache.doris.analysis.LiteralExpr;
 import org.apache.doris.nereids.exceptions.AnalysisException;
+import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.types.DataType;
+import org.apache.doris.nereids.types.coercion.IntegralType;
+import org.apache.doris.qe.ConnectContext;
 
 import java.io.UnsupportedEncodingException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 /**
  * StringLikeLiteral.
@@ -69,6 +74,36 @@ public abstract class StringLikeLiteral extends Literal implements ComparableLit
     @Override
     public LiteralExpr toLegacyLiteral() {
         return new org.apache.doris.analysis.StringLiteral(value);
+    }
+
+    @Override
+    protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
+        boolean strictCast = ConnectContext.get().getSessionVariable().enableStrictCast();
+        if (targetType instanceof IntegralType) {
+            String regex = strictCast ? "\\s*[+-]?\\d+\\s*" : "\\s*[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)\\s*";
+            Pattern pattern = Pattern.compile(regex);
+            if (pattern.matcher(value).matches() && !numericOverflow(value.trim(), targetType)) {
+                String trimmedValue = value.trim();
+                trimmedValue = trimmedValue.startsWith(".") || trimmedValue.startsWith("+.") || trimmedValue.startsWith("-.")
+                        ? "0" : trimmedValue.split("\\.")[0];
+                if (targetType.isTinyIntType()) {
+                    return Literal.of(Byte.valueOf(trimmedValue));
+                } else if (targetType.isSmallIntType()) {
+                    return Literal.of(Short.valueOf(trimmedValue));
+                } else if (targetType.isIntegerType()) {
+                    return Literal.of(Integer.valueOf(trimmedValue));
+                } else if (targetType.isBigIntType()) {
+                    return Literal.of(Long.valueOf(trimmedValue));
+                } else if (targetType.isLargeIntType()) {
+                    return Literal.of(new BigDecimal(trimmedValue).toBigInteger());
+                }
+            } else if (strictCast) {
+                throw new AnalysisException(String.format("%s can't cast to %s in strict mode.", value, targetType));
+            } else {
+                return new NullLiteral(targetType);
+            }
+        }
+        return super.uncheckedCastTo(targetType);
     }
 
     @Override

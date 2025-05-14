@@ -22,14 +22,20 @@ import org.apache.doris.catalog.Type;
 import org.apache.doris.nereids.exceptions.AnalysisException;
 import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.visitor.ExpressionVisitor;
+import org.apache.doris.nereids.types.DataType;
 import org.apache.doris.nereids.types.DateTimeType;
 import org.apache.doris.nereids.types.DateTimeV2Type;
+import org.apache.doris.nereids.types.IntegerType;
+import org.apache.doris.nereids.types.SmallIntType;
+import org.apache.doris.nereids.types.TinyIntType;
 import org.apache.doris.nereids.types.coercion.DateLikeType;
+import org.apache.doris.nereids.types.coercion.IntegralType;
 import org.apache.doris.nereids.util.DateUtils;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.math.BigInteger;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -325,6 +331,21 @@ public class DateTimeLiteral extends DateLiteral {
             return String.valueOf(format);
         }
         return String.format("%04d-%02d-%02d %02d:%02d:%02d", year, month, day, hour, minute, second);
+    }
+
+    @Override
+    protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
+        if (targetType instanceof IntegralType) {
+            if (targetType instanceof TinyIntType || targetType instanceof SmallIntType || targetType instanceof IntegerType) {
+                throw new AnalysisException("DateTime can't cast to TinyInt, SmallInt or Integer.");
+            }
+            if (targetType.isBigIntType()) {
+                return new BigIntLiteral(getValue());
+            } else if (targetType.isLargeIntType()) {
+                return new LargeIntLiteral(new BigInteger(String.valueOf(getValue())));
+            }
+        }
+        return super.uncheckedCastTo(targetType);
     }
 
     @Override

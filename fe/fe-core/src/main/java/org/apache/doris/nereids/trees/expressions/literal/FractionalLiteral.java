@@ -17,7 +17,16 @@
 
 package org.apache.doris.nereids.trees.expressions.literal;
 
+import org.apache.doris.nereids.exceptions.AnalysisException;
+import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.types.DataType;
+import org.apache.doris.nereids.types.coercion.IntegralType;
+import org.apache.doris.qe.ConnectContext;
+
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.math.RoundingMode;
+import java.util.regex.Pattern;
 
 /**
  * float/double/decimal
@@ -30,5 +39,40 @@ public abstract class FractionalLiteral extends NumericLiteral {
      */
     public FractionalLiteral(DataType dataType) {
         super(dataType);
+    }
+
+    @Override
+    protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
+        boolean strictCast = ConnectContext.get().getSessionVariable().enableStrictCast();
+        if (targetType instanceof IntegralType) {
+            Object value = getValue();
+            // finite == true means the value is neither NaN nor infinite.
+            boolean isFinite = value instanceof Float && Float.isFinite((Float) value)
+                    || value instanceof Double && Double.isInfinite((Double) value)
+                    || value instanceof BigDecimal;
+            BigDecimal decimal = new BigDecimal(value.toString());
+            boolean canCast = !numericOverflow(decimal, targetType) && isFinite;
+            if (!canCast) {
+                if (strictCast) {
+                    throw new AnalysisException(
+                            String.format("%s can't cast to %s in strict mode.", value, targetType));
+                } else {
+                    return new NullLiteral(targetType);
+                }
+            }
+            BigDecimal intValue = decimal.setScale(0, RoundingMode.DOWN);
+            if (targetType.isTinyIntType()) {
+                return new TinyIntLiteral((byte) intValue.intValue());
+            } else if (targetType.isSmallIntType()) {
+                return new SmallIntLiteral((short) intValue.intValue());
+            } else if (targetType.isIntegerType()) {
+                return new IntegerLiteral(intValue.intValue());
+            } else if (targetType.isBigIntType()) {
+                return new BigIntLiteral(intValue.longValue());
+            } else if (targetType.isLargeIntType()) {
+                return new LargeIntLiteral(intValue.toBigInteger());
+            }
+        }
+        return super.uncheckedCastTo(targetType);
     }
 }

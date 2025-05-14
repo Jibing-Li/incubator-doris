@@ -41,6 +41,7 @@ import org.apache.doris.nereids.types.LargeIntType;
 import org.apache.doris.nereids.types.StringType;
 import org.apache.doris.nereids.types.VarcharType;
 import org.apache.doris.nereids.types.coercion.IntegralType;
+import org.apache.doris.qe.ConnectContext;
 
 import com.google.common.collect.ImmutableList;
 
@@ -166,41 +167,53 @@ public abstract class Literal extends Expression implements LeafExpression {
     public Expression checkedCastTo(DataType targetType) throws AnalysisException {
         if (getDataType().isNumericType()) {
             String desc = getStringValue();
-            BigDecimal val = new BigDecimal(desc);
-            BigDecimal maxVal = val;
-            BigDecimal minVal = val;
-            if (targetType.isTinyIntType()) {
-                maxVal = new BigDecimal(Byte.MAX_VALUE);
-                minVal = new BigDecimal(Byte.MIN_VALUE);
-            } else if (targetType.isSmallIntType()) {
-                maxVal = new BigDecimal(Short.MAX_VALUE);
-                minVal = new BigDecimal(Short.MIN_VALUE);
-            } else if (targetType.isIntegerType()) {
-                maxVal = new BigDecimal(Integer.MAX_VALUE);
-                minVal = new BigDecimal(Integer.MIN_VALUE);
-            } else if (targetType.isBigIntType()) {
-                maxVal = new BigDecimal(Long.MAX_VALUE);
-                minVal = new BigDecimal(Long.MIN_VALUE);
-            } else if (targetType.isLargeIntType()) {
-                maxVal = new BigDecimal(LargeIntType.MAX_VALUE);
-                minVal = new BigDecimal(LargeIntType.MIN_VALUE);
-            } else if (targetType.isFloatType()) {
-                maxVal = new BigDecimal(Float.MAX_VALUE);
-                minVal = BigDecimal.valueOf(-Float.MAX_VALUE);
-            } else if (targetType.isDoubleType()) {
-                maxVal = new BigDecimal(Double.MAX_VALUE);
-                minVal = BigDecimal.valueOf(-Double.MAX_VALUE);
-            }
-
-            if (val.compareTo(maxVal) > 0 || val.compareTo(minVal) < 0) {
-                throw new AnalysisException(
-                        String.format("%s can't cast to %s", desc, targetType));
+            if (numericOverflow(desc, targetType)) {
+                if (ConnectContext.get().getSessionVariable().enableStrictCast()) {
+                    throw new AnalysisException(
+                            String.format("%s can't cast to %s, overflow.", desc, targetType));
+                } else {
+                    return new NullLiteral(targetType);
+                }
             }
         }
         return uncheckedCastTo(targetType);
     }
 
-    @Override
+    protected boolean numericOverflow(String desc, DataType targetType) {
+        BigDecimal val = new BigDecimal(desc);
+        return numericOverflow(val, targetType);
+    }
+
+    protected boolean numericOverflow(BigDecimal value, DataType targetType) {
+        BigDecimal maxVal = value;
+        BigDecimal minVal = value;
+        if (targetType.isTinyIntType()) {
+            maxVal = new BigDecimal(Byte.MAX_VALUE);
+            minVal = new BigDecimal(Byte.MIN_VALUE);
+        } else if (targetType.isSmallIntType()) {
+            maxVal = new BigDecimal(Short.MAX_VALUE);
+            minVal = new BigDecimal(Short.MIN_VALUE);
+        } else if (targetType.isIntegerType()) {
+            maxVal = new BigDecimal(Integer.MAX_VALUE);
+            minVal = new BigDecimal(Integer.MIN_VALUE);
+        } else if (targetType.isBigIntType()) {
+            maxVal = new BigDecimal(Long.MAX_VALUE);
+            minVal = new BigDecimal(Long.MIN_VALUE);
+        } else if (targetType.isLargeIntType()) {
+            maxVal = new BigDecimal(LargeIntType.MAX_VALUE);
+            minVal = new BigDecimal(LargeIntType.MIN_VALUE);
+        } else if (targetType.isFloatType()) {
+            maxVal = new BigDecimal(Float.MAX_VALUE);
+            minVal = BigDecimal.valueOf(-Float.MAX_VALUE);
+        } else if (targetType.isDoubleType()) {
+            maxVal = new BigDecimal(Double.MAX_VALUE);
+            minVal = BigDecimal.valueOf(-Double.MAX_VALUE);
+        }
+        return value.compareTo(maxVal) > 0 || value.compareTo(minVal) < 0;
+    }
+
+
+        @Override
     protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
         if (this.dataType.equals(targetType)) {
             return this;
