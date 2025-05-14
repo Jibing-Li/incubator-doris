@@ -19,8 +19,15 @@ package org.apache.doris.nereids.trees.expressions.literal;
 
 import org.apache.doris.analysis.LiteralExpr;
 import org.apache.doris.catalog.Type;
+import org.apache.doris.nereids.exceptions.AnalysisException;
+import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.visitor.ExpressionVisitor;
+import org.apache.doris.nereids.types.CharType;
+import org.apache.doris.nereids.types.DataType;
+import org.apache.doris.nereids.types.DoubleType;
 import org.apache.doris.nereids.types.FloatType;
+import org.apache.doris.nereids.types.VarcharType;
+import org.apache.doris.qe.ConnectContext;
 
 import java.math.BigDecimal;
 
@@ -54,5 +61,35 @@ public class FloatLiteral extends FractionalLiteral {
     @Override
     public LiteralExpr toLegacyLiteral() {
         return new org.apache.doris.analysis.FloatLiteral(getDouble(), Type.FLOAT);
+    }
+
+    @Override
+    protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
+        boolean strictCast = ConnectContext.get().getSessionVariable().enableStrictCast();
+        if (targetType instanceof DoubleType) {
+            return new DoubleLiteral(value);
+        } else if (targetType.isStringType()) {
+            return new StringLiteral(getStringValue());
+        } else if (targetType.isCharType()) {
+            String desc = getStringValue();
+            if (((CharType) targetType).getLen() >= desc.length()) {
+                return new CharLiteral(desc, ((CharType) targetType).getLen());
+            }
+        } else if (targetType.isVarcharType()) {
+            String desc = getStringValue();
+            return new VarcharLiteral(desc, ((VarcharType) targetType).getLen());
+        } else if (targetType.isDecimalV2Type() || targetType.isDecimalV3Type()) {
+            try {
+                if (Float.isInfinite(value) || Float.isNaN(value)) {
+                    throw new AnalysisException(String.format(
+                            "%s can't cast to %s in strict mode.", getValue(), targetType));
+                }
+                BigDecimal bigDecimal = new BigDecimal(value);
+                return getDecimalLiteral(bigDecimal, targetType);
+            } catch (AnalysisException e) {
+                return throwOrNull(strictCast, targetType, e);
+            }
+        }
+        return super.uncheckedCastTo(targetType);
     }
 }

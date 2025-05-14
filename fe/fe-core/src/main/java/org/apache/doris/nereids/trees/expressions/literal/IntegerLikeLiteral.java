@@ -17,9 +17,19 @@
 
 package org.apache.doris.nereids.trees.expressions.literal;
 
+import org.apache.doris.nereids.exceptions.AnalysisException;
+import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.types.DataType;
+import org.apache.doris.nereids.types.DecimalV2Type;
+import org.apache.doris.nereids.types.DecimalV3Type;
+import org.apache.doris.nereids.types.DoubleType;
+import org.apache.doris.nereids.types.FloatType;
+import org.apache.doris.nereids.types.coercion.DateLikeType;
+import org.apache.doris.nereids.types.coercion.IntegralType;
+import org.apache.doris.qe.ConnectContext;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 
 /** IntegralLiteral */
 public abstract class IntegerLikeLiteral extends NumericLiteral {
@@ -46,4 +56,69 @@ public abstract class IntegerLikeLiteral extends NumericLiteral {
     }
 
     public abstract Number getNumber();
+
+    @Override
+    protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
+        boolean strictCast = ConnectContext.get().getSessionVariable().enableStrictCast();
+        if (targetType instanceof DateLikeType) {
+            try {
+                long value = integralValueToLong(getValue());
+                if (!validCastToDate(value)) {
+                    throw new AnalysisException(String.format(
+                            "%s can't cast to %s in strict mode.", getValue(), targetType));
+                }
+                String s = getDateTimeString(value);
+                return getDateLikeLiteral(s, targetType);
+            } catch (AnalysisException e) {
+                return throwOrNull(strictCast, targetType, e);
+            }
+        } else if (targetType instanceof FloatType) {
+            Object value = getValue();
+            return Literal.of(((Number) value).floatValue());
+        } else if (targetType instanceof DoubleType) {
+            Object value = getValue();
+            return Literal.of(((Number) value).doubleValue());
+        } else if (targetType instanceof DecimalV2Type || targetType instanceof DecimalV3Type) {
+            try {
+                BigDecimal bigDecimal = getValue() instanceof BigInteger
+                        ? new BigDecimal((BigInteger) getValue())
+                        : new BigDecimal(((Number) getValue()).longValue());
+                return getDecimalLiteral(bigDecimal, targetType);
+            } catch (AnalysisException e) {
+                return throwOrNull(strictCast, targetType, e);
+            }
+        } else if (targetType.isBooleanType()) {
+            Object value = getValue();
+            if (value instanceof BigInteger) {
+                if (BigInteger.ZERO.equals(value)) {
+                    return BooleanLiteral.FALSE;
+                } else {
+                    return BooleanLiteral.TRUE;
+                }
+            }
+            long longValue = (Long) value;
+            if (longValue == 0) {
+                return BooleanLiteral.FALSE;
+            } else {
+                return BooleanLiteral.TRUE;
+            }
+        } else if (targetType instanceof IntegralType) {
+            if (this.dataType.equals(targetType)) {
+                return this;
+            }
+            long value = getLongValue();
+            if (targetType.isTinyIntType()) {
+                return Literal.of((byte) value);
+            } else if (targetType.isSmallIntType()) {
+                return Literal.of((short) value);
+            } else if (targetType.isIntegerType()) {
+                return Literal.of((int) value);
+            } else if (targetType.isBigIntType()) {
+                return Literal.of(value);
+            } else if (targetType.isLargeIntType()) {
+                return Literal.of(BigInteger.valueOf(value));
+            }
+        }
+        return super.uncheckedCastTo(targetType);
+    }
 }

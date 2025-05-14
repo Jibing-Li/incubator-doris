@@ -19,8 +19,19 @@ package org.apache.doris.nereids.trees.expressions.literal;
 
 import org.apache.doris.analysis.BoolLiteral;
 import org.apache.doris.analysis.LiteralExpr;
+import org.apache.doris.nereids.exceptions.AnalysisException;
+import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.visitor.ExpressionVisitor;
 import org.apache.doris.nereids.types.BooleanType;
+import org.apache.doris.nereids.types.DataType;
+import org.apache.doris.nereids.types.DecimalV2Type;
+import org.apache.doris.nereids.types.DecimalV3Type;
+import org.apache.doris.nereids.types.DoubleType;
+import org.apache.doris.nereids.types.FloatType;
+import org.apache.doris.qe.ConnectContext;
+
+import java.math.BigDecimal;
+import java.math.BigInteger;
 
 /**
  * Represents Boolean literal
@@ -91,5 +102,48 @@ public class BooleanLiteral extends Literal implements ComparableLiteral {
         } else {
             return 0;
         }
+    }
+
+    @Override
+    protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
+        boolean strictCast = ConnectContext.get().getSessionVariable().enableStrictCast();
+        if (targetType instanceof FloatType) {
+            return Literal.of((float) (value ? 1 : 0));
+        } else if (targetType instanceof DoubleType) {
+            return Literal.of((double) (value ? 1 : 0));
+        } else if (targetType.isDecimalV2Type()) {
+            int precision = ((DecimalV2Type) targetType).getPrecision();
+            int scale = ((DecimalV2Type) targetType).getScale();
+            if (precision - scale < 1) {
+                return throwOrNull(strictCast, targetType);
+            }
+            return new DecimalLiteral((DecimalV2Type) targetType, new BigDecimal(value ? 1 : 0));
+        } else if (targetType.isDecimalV3Type()) {
+            int precision = ((DecimalV3Type) targetType).getPrecision();
+            int scale = ((DecimalV3Type) targetType).getScale();
+            if (precision - scale < 1) {
+                return throwOrNull(strictCast, targetType);
+            }
+            return new DecimalV3Literal((DecimalV3Type) targetType, new BigDecimal(value ? 1 : 0));
+        } else if (targetType.isNumericType()) {
+            int value;
+            if (this.equals(BooleanLiteral.TRUE)) {
+                value = 1;
+            } else {
+                value = 0;
+            }
+            if (targetType.isTinyIntType()) {
+                return Literal.of((byte) value);
+            } else if (targetType.isSmallIntType()) {
+                return Literal.of((short) value);
+            } else if (targetType.isIntegerType()) {
+                return Literal.of(value);
+            } else if (targetType.isBigIntType()) {
+                return Literal.of((long) value);
+            } else if (targetType.isLargeIntType()) {
+                return Literal.of(BigInteger.valueOf(value));
+            }
+        }
+        return super.uncheckedCastTo(targetType);
     }
 }
