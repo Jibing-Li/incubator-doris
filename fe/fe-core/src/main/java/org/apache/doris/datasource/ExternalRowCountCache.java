@@ -32,6 +32,8 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public class ExternalRowCountCache {
 
@@ -110,9 +112,8 @@ public class ExternalRowCountCache {
         RowCountKey key = new RowCountKey(catalogId, dbId, tableId);
         try {
             CompletableFuture<Optional<Long>> f = rowCountCache.get(key);
-            if (f.isDone()) {
-                return f.get().orElse(TableIf.UNKNOWN_ROW_COUNT);
-            }
+            f.get(10, TimeUnit.SECONDS);
+        } catch (TimeoutException t) {
             LOG.info("Row count for table {}.{}.{} is still processing.", catalogId, dbId, tableId);
         } catch (Exception e) {
             LOG.warn("Unexpected exception while returning row count", e);
