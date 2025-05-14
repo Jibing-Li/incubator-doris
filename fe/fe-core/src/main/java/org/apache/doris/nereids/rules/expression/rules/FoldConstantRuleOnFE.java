@@ -514,6 +514,8 @@ public class FoldConstantRuleOnFE extends AbstractExpressionRewriteRule
                 castResult = rewrite(castResult, context);
             }
             return castResult;
+        } catch (AnalysisException a) {
+            throw a;
         } catch (Throwable t) {
             return cast;
         }

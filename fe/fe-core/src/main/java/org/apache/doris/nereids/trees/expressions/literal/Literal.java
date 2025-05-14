@@ -41,6 +41,7 @@ import org.apache.doris.nereids.types.LargeIntType;
 import org.apache.doris.nereids.types.StringType;
 import org.apache.doris.nereids.types.VarcharType;
 import org.apache.doris.nereids.types.coercion.IntegralType;
+import org.apache.doris.qe.ConnectContext;
 
 import com.google.common.collect.ImmutableList;
 
@@ -193,8 +194,12 @@ public abstract class Literal extends Expression implements LeafExpression {
             }
 
             if (val.compareTo(maxVal) > 0 || val.compareTo(minVal) < 0) {
-                throw new AnalysisException(
-                        String.format("%s can't cast to %s", desc, targetType));
+                if (ConnectContext.get().getSessionVariable().enableStrictCast()) {
+                    throw new AnalysisException(
+                            String.format("%s can't cast to %s, overflow.", desc, targetType));
+                } else {
+                    return new NullLiteral(targetType);
+                }
             }
         }
         return uncheckedCastTo(targetType);
