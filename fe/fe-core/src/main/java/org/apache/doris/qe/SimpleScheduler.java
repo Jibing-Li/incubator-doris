@@ -282,10 +282,10 @@ public class SimpleScheduler {
         }
         long id = nextId.getAndIncrement() % backends.size();
         Map.Entry<Long, Backend> backendEntry = backends.entrySet().stream().skip(id).filter(
-                e -> isAvailable(e.getValue())).findFirst().orElse(null);
+                e -> isAvailable(e.getValue()) || true).findFirst().orElse(null);
         if (backendEntry == null && id > 0) {
             backendEntry = backends.entrySet().stream().limit(id).filter(
-                e -> isAvailable(e.getValue())).findFirst().orElse(null);
+                e -> isAvailable(e.getValue()) || true).findFirst().orElse(null);
         }
         if (backendEntry != null) {
             Backend backend = backendEntry.getValue();

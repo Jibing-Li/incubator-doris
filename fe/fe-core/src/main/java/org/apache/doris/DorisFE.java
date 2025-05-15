@@ -323,7 +323,7 @@ public class DorisFE {
             System.err.println("Failed to parse command line. exit now");
             System.exit(-1);
         }
-
+        System.setProperty(FeConstants.METADATA_FAILURE_RECOVERY_KEY, "true");
         // version
         if (cmd.hasOption('v') || cmd.hasOption("version")) {
             return new CommandLineOptions(true, "", null, "");
