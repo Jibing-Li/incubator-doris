@@ -65,6 +65,10 @@ public class LogicalEmptyRelation extends LogicalRelation
         return projects;
     }
 
+    public LogicalEmptyRelation withProjects(List<? extends NamedExpression> projects) {
+        return new LogicalEmptyRelation(relationId, projects);
+    }
+
     @Override
     public Plan withGroupExpression(Optional<GroupExpression> groupExpression) {
         return new LogicalEmptyRelation(relationId, projects,
@@ -80,14 +84,6 @@ public class LogicalEmptyRelation extends LogicalRelation
     @Override
     public LogicalEmptyRelation withRelationId(RelationId relationId) {
         throw new RuntimeException("should not call LogicalEmptyRelation's withRelationId method");
-    }
-
-    public LogicalEmptyRelation withProjects(List<NamedExpression> projects) {
-        return new LogicalEmptyRelation(relationId, projects);
-    }
-
-    public LogicalEmptyRelation withRelationIdAndProjects(RelationId relationId, List<NamedExpression> projects) {
-        return new LogicalEmptyRelation(relationId, projects);
     }
 
     @Override

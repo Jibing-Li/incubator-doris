@@ -68,7 +68,7 @@ public class LogicalWindowToPhysicalWindow extends OneImplementationRuleFactory 
     public Rule build() {
 
         return RuleType.LOGICAL_WINDOW_TO_PHYSICAL_WINDOW_RULE.build(
-            logicalWindow().then(this::implement)
+            logicalWindow().when(LogicalWindow::isChecked).then(this::implement)
         );
     }
 
