@@ -212,8 +212,7 @@ public abstract class Literal extends Expression implements LeafExpression {
         return value.compareTo(maxVal) > 0 || value.compareTo(minVal) < 0;
     }
 
-
-        @Override
+    @Override
     protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
         if (this.dataType.equals(targetType)) {
             return this;

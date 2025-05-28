@@ -17,7 +17,11 @@
 
 package org.apache.doris.nereids.trees.expressions.literal;
 
+import org.apache.doris.nereids.exceptions.AnalysisException;
+import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.types.DataType;
+import org.apache.doris.nereids.types.coercion.DateLikeType;
+import org.apache.doris.qe.ConnectContext;
 
 import java.math.BigDecimal;
 
@@ -46,4 +50,27 @@ public abstract class IntegerLikeLiteral extends NumericLiteral {
     }
 
     public abstract Number getNumber();
+
+    @Override
+    protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
+        boolean strictCast = ConnectContext.get().getSessionVariable().enableStrictCast();
+        if (targetType instanceof DateLikeType) {
+            try {
+                long value = integralValueToLong(getValue());
+                if (!validCastToDate(value)) {
+                    throw new AnalysisException(String.format(
+                            "%s can't cast to %s in strict mode.", getValue(), targetType));
+                }
+                String s = getDateTimeString(value);
+                return getDateLikeLiteral(s, targetType);
+            } catch (AnalysisException e) {
+                if (strictCast) {
+                    throw e;
+                } else {
+                    return new NullLiteral(targetType);
+                }
+            }
+        }
+        return super.uncheckedCastTo(targetType);
+    }
 }

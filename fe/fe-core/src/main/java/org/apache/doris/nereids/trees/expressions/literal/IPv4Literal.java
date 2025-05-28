@@ -23,12 +23,8 @@ import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.visitor.ExpressionVisitor;
 import org.apache.doris.nereids.types.DataType;
 import org.apache.doris.nereids.types.IPv4Type;
-import org.apache.doris.nereids.types.IntegerType;
-import org.apache.doris.nereids.types.SmallIntType;
-import org.apache.doris.nereids.types.TinyIntType;
 import org.apache.doris.nereids.types.coercion.IntegralType;
 
-import java.math.BigInteger;
 import java.util.regex.Pattern;
 
 /**

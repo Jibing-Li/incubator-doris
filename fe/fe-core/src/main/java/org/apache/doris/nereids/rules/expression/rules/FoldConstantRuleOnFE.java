@@ -91,10 +91,8 @@ import org.apache.doris.nereids.trees.expressions.literal.NullLiteral;
 import org.apache.doris.nereids.trees.expressions.literal.StringLikeLiteral;
 import org.apache.doris.nereids.trees.expressions.literal.StringLiteral;
 import org.apache.doris.nereids.trees.expressions.literal.VarcharLiteral;
-import org.apache.doris.nereids.trees.expressions.literal.format.DateTimeChecker;
 import org.apache.doris.nereids.types.BooleanType;
 import org.apache.doris.nereids.types.DataType;
-import org.apache.doris.nereids.types.coercion.DateLikeType;
 import org.apache.doris.nereids.util.ExpressionUtils;
 import org.apache.doris.nereids.util.TypeCoercionUtils;
 import org.apache.doris.qe.ConnectContext;
@@ -497,17 +495,19 @@ public class FoldConstantRuleOnFE extends AbstractExpressionRewriteRule
         // todo: process other null case
         if (child.isNullLiteral()) {
             return new NullLiteral(dataType);
-        } else if (child instanceof StringLikeLiteral && dataType instanceof DateLikeType) {
-            String dateStr = ((StringLikeLiteral) child).getStringValue();
-            if (!DateTimeChecker.isValidDateTime(dateStr)) {
-                return cast;
-            }
-            try {
-                return ((DateLikeType) dataType).fromString(dateStr);
-            } catch (Exception t) {
-                return cast;
-            }
         }
+        //TODO : use DateTimeChecker to Improve performance.
+        // if (child instanceof StringLikeLiteral && dataType instanceof DateLikeType) {
+        //     String dateStr = ((StringLikeLiteral) child).getStringValue();
+        //     if (!DateTimeChecker.isValidDateTime(dateStr)) {
+        //         return cast;
+        //     }
+        //     try {
+        //         return ((DateLikeType) dataType).fromString(dateStr);
+        //     } catch (Exception t) {
+        //         return cast;
+        //     }
+        // }
         try {
             Expression castResult = child.checkedCastTo(dataType);
             if (!Objects.equals(castResult, cast) && !Objects.equals(castResult, child)) {

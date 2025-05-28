@@ -20,13 +20,12 @@ package org.apache.doris.nereids.trees.expressions.literal;
 import org.apache.doris.nereids.exceptions.AnalysisException;
 import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.types.DataType;
+import org.apache.doris.nereids.types.coercion.DateLikeType;
 import org.apache.doris.nereids.types.coercion.IntegralType;
 import org.apache.doris.qe.ConnectContext;
 
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.math.RoundingMode;
-import java.util.regex.Pattern;
 
 /**
  * float/double/decimal
@@ -71,6 +70,26 @@ public abstract class FractionalLiteral extends NumericLiteral {
                 return new BigIntLiteral(intValue.longValue());
             } else if (targetType.isLargeIntType()) {
                 return new LargeIntLiteral(intValue.toBigInteger());
+            }
+        } else if (targetType instanceof DateLikeType) {
+            try {
+                BigDecimal decimal = new BigDecimal(getValue().toString());
+                long longValue = integralValueToLong(decimal.toBigInteger());
+                if (!validCastToDate(longValue)) {
+                    throw new AnalysisException(String.format(
+                            "%s can't cast to %s in strict mode.", getValue(), targetType));
+                }
+                String s = getDateTimeString(longValue);
+                if (decimal.stripTrailingZeros().scale() > 0) {
+                    s = String.format("%s.%s", s, decimal.toString().split("\\.")[1]);
+                }
+                return getDateLikeLiteral(s, targetType);
+            } catch (AnalysisException e) {
+                if (strictCast) {
+                    throw e;
+                } else {
+                    return new NullLiteral(targetType);
+                }
             }
         }
         return super.uncheckedCastTo(targetType);

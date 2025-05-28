@@ -21,6 +21,10 @@ import org.apache.doris.analysis.LiteralExpr;
 import org.apache.doris.nereids.exceptions.AnalysisException;
 import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.types.DataType;
+import org.apache.doris.nereids.types.DateTimeType;
+import org.apache.doris.nereids.types.DateTimeV2Type;
+import org.apache.doris.nereids.types.DateType;
+import org.apache.doris.nereids.types.DateV2Type;
 import org.apache.doris.nereids.types.coercion.IntegralType;
 import org.apache.doris.qe.ConnectContext;
 
@@ -28,6 +32,7 @@ import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -36,6 +41,20 @@ import java.util.regex.Pattern;
 public abstract class StringLikeLiteral extends Literal implements ComparableLiteral {
     public static final int CHINESE_CHAR_BYTE_LENGTH = 4;
     public final String value;
+
+    public final String strictRegex = "^(?:(?<year1>\\d{2}|\\d{4})-(?<month1>\\d{1,2})-(?<date1>\\d{1,2})"
+            + "|(?<year2>\\d{2}|\\d{4})(?<month2>\\d{2})(?<date2>\\d{2}))"
+            + "(?:(?:[T ])"
+            + "(?:(?:(?<hour1>\\d{1,2})(?::(?<minute1>\\d{1,2})(?::(?<second1>\\d{1,2})(?<fraction1>\\.\\d*)?)?)?)"
+            + "|(?:(?<hour2>\\d{2})(?:(?<minute2>\\d{2})(?:(?<second2>\\d{2})(?<fraction2>\\.\\d*)?)?)?)))?"
+            + "(?:\\s*(?<tz>(?:[+-](?:\\d{1,2})(?::?(?:00|30|45))?)"
+            + "|(?:(?i)(?:CST|UTC|GMT|ZULU|Z|(?:[A-Za-z_]+/[A-Za-z_]+)))))?$";
+    public final String unStrictRegex
+            = "^\\s*((?<year>\\d{2,4})[^a-zA-Z\\d](?<month>\\d{1,2})[^a-zA-Z\\d](?<date>\\d{1,2}))"
+            + "(?:(?:[ T])"
+            + "(?:(?<hour>\\d{1,2})[^a-zA-Z\\d](?<minute>\\d{1,2})[^a-zA-Z\\d]"
+            + "(?<second>\\d{1,2})(?<fraction>\\.\\d*)?))?"
+            + "(?:\\s*(?<tz>[+-]\\d{1,2}(?::?(?:00|30|45))?|(?i)(?:CST|UTC|GMT|ZULU|Z|[A-Za-z_]+/[A-Za-z_]+)))?\\s*$";
 
     public StringLikeLiteral(String value, DataType dataType) {
         super(dataType);
@@ -80,30 +99,118 @@ public abstract class StringLikeLiteral extends Literal implements ComparableLit
     protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
         boolean strictCast = ConnectContext.get().getSessionVariable().enableStrictCast();
         if (targetType instanceof IntegralType) {
-            String regex = strictCast ? "\\s*[+-]?\\d+\\s*" : "\\s*[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)\\s*";
-            Pattern pattern = Pattern.compile(regex);
-            if (pattern.matcher(value).matches() && !numericOverflow(value.trim(), targetType)) {
-                String trimmedValue = value.trim();
-                trimmedValue = trimmedValue.startsWith(".") || trimmedValue.startsWith("+.") || trimmedValue.startsWith("-.")
-                        ? "0" : trimmedValue.split("\\.")[0];
-                if (targetType.isTinyIntType()) {
-                    return Literal.of(Byte.valueOf(trimmedValue));
-                } else if (targetType.isSmallIntType()) {
-                    return Literal.of(Short.valueOf(trimmedValue));
-                } else if (targetType.isIntegerType()) {
-                    return Literal.of(Integer.valueOf(trimmedValue));
-                } else if (targetType.isBigIntType()) {
-                    return Literal.of(Long.valueOf(trimmedValue));
-                } else if (targetType.isLargeIntType()) {
-                    return Literal.of(new BigDecimal(trimmedValue).toBigInteger());
+            return castToIntegral(targetType, strictCast);
+        }
+        if (targetType instanceof DateType || targetType instanceof DateV2Type) {
+            Expression expression = castToDateTime(DateTimeV2Type.MAX, strictCast);
+            if (expression instanceof NullLiteral) {
+                return expression;
+            }
+            DateTimeV2Literal datetime = (DateTimeV2Literal) expression;
+            return new DateV2Literal(datetime.year, datetime.month, datetime.day);
+        }
+        if (targetType instanceof DateTimeType || targetType instanceof DateTimeV2Type) {
+            return castToDateTime(targetType, strictCast);
+        }
+        return super.uncheckedCastTo(targetType);
+    }
+
+    protected Expression castToIntegral(DataType targetType, boolean strictCast) {
+        String regex = strictCast ? "\\s*[+-]?\\d+\\s*" : "\\s*[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)\\s*";
+        Pattern pattern = Pattern.compile(regex);
+        if (pattern.matcher(value).matches() && !numericOverflow(value.trim(), targetType)) {
+            String trimmedValue = value.trim();
+            trimmedValue = trimmedValue.startsWith(".")
+                    || trimmedValue.startsWith("+.") || trimmedValue.startsWith("-.")
+                    ? "0" : trimmedValue.split("\\.")[0];
+            if (targetType.isTinyIntType()) {
+                return Literal.of(Byte.valueOf(trimmedValue));
+            } else if (targetType.isSmallIntType()) {
+                return Literal.of(Short.valueOf(trimmedValue));
+            } else if (targetType.isIntegerType()) {
+                return Literal.of(Integer.valueOf(trimmedValue));
+            } else if (targetType.isBigIntType()) {
+                return Literal.of(Long.valueOf(trimmedValue));
+            } else if (targetType.isLargeIntType()) {
+                return Literal.of(new BigDecimal(trimmedValue).toBigInteger());
+            } else {
+                throw new AnalysisException(String.format("Invalid target type %s", targetType));
+            }
+        } else if (strictCast) {
+            throw new AnalysisException(String.format("%s can't cast to %s in strict mode.", value, targetType));
+        } else {
+            return new NullLiteral(targetType);
+        }
+    }
+
+    protected Expression castToDateTime(DataType targetType, boolean strictCast) {
+        try {
+            Pattern strictPattern = Pattern.compile(strictRegex);
+            Matcher strictMatcher = strictPattern.matcher(value);
+            if (strictMatcher.matches()) {
+                String year = strictMatcher.group("year1") == null
+                        ? strictMatcher.group("year2") : strictMatcher.group("year1");
+                String month = strictMatcher.group("month1") == null
+                        ? strictMatcher.group("month2") : strictMatcher.group("month1");
+                String date = strictMatcher.group("date1") == null
+                        ? strictMatcher.group("date2") : strictMatcher.group("date1");
+                String hour = strictMatcher.group("hour1") == null
+                        ? strictMatcher.group("hour2") : strictMatcher.group("hour1");
+                String minute = strictMatcher.group("minute1") == null
+                        ? strictMatcher.group("minute2") : strictMatcher.group("minute1");
+                String second = strictMatcher.group("second1") == null
+                        ? strictMatcher.group("second2") : strictMatcher.group("second1");
+                String fraction = strictMatcher.group("fraction1") == null
+                        ? strictMatcher.group("fraction2") : strictMatcher.group("fraction1");
+                String tz = strictMatcher.group("tz");
+                return getDateTimeLiteral(year, month, date, hour, minute, second, fraction, tz, targetType);
+            } else if (!strictCast) {
+                Matcher unStrictMatcher = Pattern.compile(unStrictRegex).matcher(value);
+                if (unStrictMatcher.matches()) {
+                    String year = unStrictMatcher.group("year");
+                    String month = unStrictMatcher.group("month");
+                    String date = unStrictMatcher.group("date");
+                    String hour = unStrictMatcher.group("hour");
+                    String minute = unStrictMatcher.group("minute");
+                    String second = unStrictMatcher.group("second");
+                    String fraction = unStrictMatcher.group("fraction");
+                    String tz = unStrictMatcher.group("tz");
+                    return getDateTimeLiteral(year, month, date, hour, minute, second, fraction, tz, targetType);
                 }
-            } else if (strictCast) {
-                throw new AnalysisException(String.format("%s can't cast to %s in strict mode.", value, targetType));
+            }
+            throw new AnalysisException(String.format("[%s] can't cast to %s.", value, targetType));
+        } catch (AnalysisException e) {
+            if (strictCast) {
+                throw e;
             } else {
                 return new NullLiteral(targetType);
             }
         }
-        return super.uncheckedCastTo(targetType);
+    }
+
+    protected DateTimeV2Literal getDateTimeLiteral(String year, String month, String date, String hour, String minute,
+            String second, String fraction, String tz, DataType targetType) {
+        String year4 = year;
+        if (year.length() == 2) {
+            int year2 = Integer.parseInt(year);
+            year4 = year2 >= 70 ? String.valueOf(year2 + 1900) : String.valueOf(2000 + year2);
+        }
+        tz = tz == null ? "" : tz;
+        if ((tz.startsWith("+") || tz.startsWith("-")) && !tz.contains(":")) {
+            if (tz.length() == 4) {
+                tz = String.format("%s%s:%s", tz.charAt(0), tz.charAt(1), tz.substring(2, 4));
+            } else {
+                tz = String.format("%s%s:%s", tz.charAt(0), tz.substring(1, 3), tz.substring(3, 5));
+            }
+        }
+        hour = hour == null ? "00" : hour;
+        minute = minute == null ? "00" : minute;
+        second = second == null ? "00" : second;
+        int scale = ((DateTimeV2Type) targetType).getScale();
+        fraction = fraction == null || fraction.equals(".")
+                ? "" : fraction.substring(0, Math.min(fraction.length(), scale + 1));
+        String format = String.format("%s-%s-%sT%s:%s:%s%s%s", year4, month, date, hour, minute, second, fraction, tz);
+        return new DateTimeV2Literal((DateTimeV2Type) targetType, format);
     }
 
     @Override
