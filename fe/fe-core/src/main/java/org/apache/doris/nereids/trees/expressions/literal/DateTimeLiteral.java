@@ -26,12 +26,15 @@ import org.apache.doris.nereids.types.DataType;
 import org.apache.doris.nereids.types.DateTimeType;
 import org.apache.doris.nereids.types.DateTimeV2Type;
 import org.apache.doris.nereids.types.DateType;
+import org.apache.doris.nereids.types.DoubleType;
+import org.apache.doris.nereids.types.FloatType;
 import org.apache.doris.nereids.types.IntegerType;
 import org.apache.doris.nereids.types.SmallIntType;
 import org.apache.doris.nereids.types.TinyIntType;
 import org.apache.doris.nereids.types.coercion.DateLikeType;
 import org.apache.doris.nereids.types.coercion.IntegralType;
 import org.apache.doris.nereids.util.DateUtils;
+import org.apache.doris.qe.ConnectContext;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -336,6 +339,7 @@ public class DateTimeLiteral extends DateLiteral {
 
     @Override
     protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
+        boolean strictCast = ConnectContext.get().getSessionVariable().enableStrictCast();
         if (targetType instanceof IntegralType) {
             if (targetType instanceof TinyIntType || targetType instanceof SmallIntType
                     || targetType instanceof IntegerType) {
@@ -348,6 +352,18 @@ public class DateTimeLiteral extends DateLiteral {
             }
         } else if (targetType instanceof DateType) {
             return new DateV2Literal(this.toString());
+        } else if (targetType instanceof FloatType) {
+            if (strictCast) {
+                throw new AnalysisException("DateTimeType can't cast to FloatType in strict mode.");
+            }
+            return new FloatLiteral(
+                    year * 1000000000 + month * 10000000 + day * 100000 + hour * 10000 + minute * 100 + second);
+        } else if (targetType instanceof DoubleType) {
+            if (strictCast) {
+                throw new AnalysisException("DateTimeType can't cast to DoubleType in strict mode.");
+            }
+            return new DoubleLiteral(
+                    year * 1000000000 + month * 10000000 + day * 100000 + hour * 10000 + minute * 100 + second);
         }
         return super.uncheckedCastTo(targetType);
     }

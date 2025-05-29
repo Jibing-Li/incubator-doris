@@ -19,11 +19,8 @@ package org.apache.doris.nereids.trees.expressions.literal;
 
 import org.apache.doris.analysis.LiteralExpr;
 import org.apache.doris.nereids.exceptions.AnalysisException;
-import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.visitor.ExpressionVisitor;
-import org.apache.doris.nereids.types.DataType;
 import org.apache.doris.nereids.types.IPv6Type;
-import org.apache.doris.nereids.types.coercion.IntegralType;
 
 import com.googlecode.ipv6.IPv6Address;
 
@@ -69,15 +66,6 @@ public class IPv6Literal extends Literal implements ComparableLiteral {
         } catch (Exception e) {
             throw new AnalysisException("Invalid IPv6 format.");
         }
-    }
-
-    @Override
-    protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
-        if (targetType instanceof IntegralType) {
-            throw new AnalysisException("IP type can't cast to Integral.");
-
-        }
-        return super.uncheckedCastTo(targetType);
     }
 
     @Override

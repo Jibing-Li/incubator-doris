@@ -38,9 +38,7 @@ import org.apache.doris.nereids.types.DateType;
 import org.apache.doris.nereids.types.DecimalV2Type;
 import org.apache.doris.nereids.types.DecimalV3Type;
 import org.apache.doris.nereids.types.LargeIntType;
-import org.apache.doris.nereids.types.StringType;
 import org.apache.doris.nereids.types.VarcharType;
-import org.apache.doris.nereids.types.coercion.IntegralType;
 import org.apache.doris.qe.ConnectContext;
 
 import com.google.common.collect.ImmutableList;
@@ -49,7 +47,6 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -179,7 +176,25 @@ public abstract class Literal extends Expression implements LeafExpression {
         return uncheckedCastTo(targetType);
     }
 
+    protected boolean isPosInf(String value) {
+        return "infinity".equalsIgnoreCase(value) || "+infinity".equalsIgnoreCase(value)
+                || "inf".equalsIgnoreCase(value) || "+inf".equalsIgnoreCase(value);
+    }
+
+    protected boolean isNegInf(String value) {
+        return "-infinity".equalsIgnoreCase(value) || "-inf".equalsIgnoreCase(value);
+    }
+
+    protected boolean isNaN(String value) {
+        return "nan".equalsIgnoreCase(value) || "-nan".equalsIgnoreCase(value) || "+nan".equalsIgnoreCase(value);
+    }
+
     protected boolean numericOverflow(String desc, DataType targetType) {
+        if (this instanceof FloatLiteral || this instanceof DoubleLiteral) {
+            if (isPosInf(desc) || isNegInf(desc) || isNaN(desc)) {
+                return false;
+            }
+        }
         BigDecimal val = new BigDecimal(desc);
         return numericOverflow(val, targetType);
     }
@@ -214,100 +229,103 @@ public abstract class Literal extends Expression implements LeafExpression {
 
     @Override
     protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
-        if (this.dataType.equals(targetType)) {
-            return this;
-        }
-        if (this instanceof NullLiteral) {
-            return new NullLiteral(targetType);
-        }
-        // TODO support string to complex
-        String desc = getStringValue();
-        // convert boolean to byte string value to support cast boolean to numeric in FE.
-        if (this.equals(BooleanLiteral.TRUE)) {
-            desc = "1";
-        } else if (this.equals(BooleanLiteral.FALSE)) {
-            desc = "0";
-        }
-        if (targetType.isBooleanType()) {
-            try {
-                // convert any non-zero numeric literal to true if target type is boolean
-                long value = Long.parseLong(desc);
-                if (value == 0) {
-                    return Literal.of(false);
-                } else {
-                    return Literal.of(true);
-                }
-            } catch (Exception e) {
-                // ignore
-            }
-            if ("0".equals(desc) || "false".equals(desc.toLowerCase(Locale.ROOT))) {
-                return Literal.of(false);
-            }
-            if ("1".equals(desc) || "true".equals(desc.toLowerCase(Locale.ROOT))) {
-                return Literal.of(true);
-            }
-        }
-        if (targetType instanceof IntegralType) {
-            // do trailing zeros to avoid number parse error when cast to integral type
-            BigDecimal bigDecimal = new BigDecimal(desc);
-            if (bigDecimal.stripTrailingZeros().scale() <= 0) {
-                desc = bigDecimal.stripTrailingZeros().toPlainString();
-            }
-        }
-        if (targetType.isTinyIntType()) {
-            return Literal.of(Byte.valueOf(desc));
-        } else if (targetType.isSmallIntType()) {
-            return Literal.of(Short.valueOf(desc));
-        } else if (targetType.isIntegerType()) {
-            return Literal.of(Integer.valueOf(desc));
-        } else if (targetType.isBigIntType()) {
-            return Literal.of(Long.valueOf(desc));
-        } else if (targetType.isLargeIntType()) {
-            return Literal.of(new BigDecimal(desc).toBigInteger());
-        } else if (targetType.isFloatType()) {
-            return Literal.of(Double.valueOf(desc).floatValue());
-        } else if (targetType.isDoubleType()) {
-            return Literal.of(Double.parseDouble(desc));
-        } else if (targetType.isCharType()) {
-            if (((CharType) targetType).getLen() >= desc.length()) {
-                return new CharLiteral(desc, ((CharType) targetType).getLen());
-            }
-        } else if (targetType.isVarcharType()) {
-            if (this.dataType.isDoubleType() || this.dataType.isFloatType()) {
-                int pointZeroIndex = findPointZeroIndex(desc);
-                if (pointZeroIndex > -1) {
-                    return new VarcharLiteral(desc.substring(0, pointZeroIndex), ((VarcharType) targetType).getLen());
-                }
-            }
-            return new VarcharLiteral(desc, ((VarcharType) targetType).getLen());
-        } else if (targetType instanceof StringType) {
-            if (this.dataType.isDoubleType() || this.dataType.isFloatType()) {
-                int pointZeroIndex = findPointZeroIndex(desc);
-                if (pointZeroIndex > -1) {
-                    return new StringLiteral(desc.substring(0, pointZeroIndex));
-                }
-            }
-            return new StringLiteral(desc);
-        } else if (targetType.isDateType()) {
-            return new DateLiteral(desc);
-        } else if (targetType.isDateTimeType()) {
-            return new DateTimeLiteral(desc);
-        } else if (targetType.isDecimalV2Type()) {
-            return new DecimalLiteral((DecimalV2Type) targetType, new BigDecimal(desc));
-        } else if (targetType.isDecimalV3Type()) {
-            return new DecimalV3Literal((DecimalV3Type) targetType, new BigDecimal(desc));
-        } else if (targetType.isDateV2Type()) {
-            return new DateV2Literal(desc);
-        } else if (targetType.isDateTimeV2Type()) {
-            return new DateTimeV2Literal((DateTimeV2Type) targetType, desc);
-        } else if (targetType.isJsonType()) {
-            return new JsonLiteral(desc);
-        } else if (targetType.isIPv4Type()) {
-            return new IPv4Literal(desc);
-        } else if (targetType.isIPv6Type()) {
-            return new IPv6Literal(desc);
-        }
-        throw new AnalysisException("cannot cast " + desc + " from type " + this.dataType + " to type " + targetType);
+        // if (this.dataType.equals(targetType)) {
+        //     return this;
+        // }
+        // if (this instanceof NullLiteral) {
+        //     return new NullLiteral(targetType);
+        // }
+        // // TODO support string to complex
+        // String desc = getStringValue();
+        // // convert boolean to byte string value to support cast boolean to numeric in FE.
+        // if (this.equals(BooleanLiteral.TRUE)) {
+        //     desc = "1";
+        // } else if (this.equals(BooleanLiteral.FALSE)) {
+        //     desc = "0";
+        // }
+        // if (targetType.isBooleanType()) {
+        //     try {
+        //         // convert any non-zero numeric literal to true if target type is boolean
+        //         long value = Long.parseLong(desc);
+        //         if (value == 0) {
+        //             return Literal.of(false);
+        //         } else {
+        //             return Literal.of(true);
+        //         }
+        //     } catch (Exception e) {
+        //         // ignore
+        //     }
+        //     if ("0".equals(desc) || "false".equals(desc.toLowerCase(Locale.ROOT))) {
+        //         return Literal.of(false);
+        //     }
+        //     if ("1".equals(desc) || "true".equals(desc.toLowerCase(Locale.ROOT))) {
+        //         return Literal.of(true);
+        //     }
+        // }
+        // if (targetType instanceof IntegralType) {
+        //     // do trailing zeros to avoid number parse error when cast to integral type
+        //     BigDecimal bigDecimal = new BigDecimal(desc);
+        //     if (bigDecimal.stripTrailingZeros().scale() <= 0) {
+        //         desc = bigDecimal.stripTrailingZeros().toPlainString();
+        //     }
+        // }
+        // if (targetType.isTinyIntType()) {
+        //     return Literal.of(Byte.valueOf(desc));
+        // } else if (targetType.isSmallIntType()) {
+        //     return Literal.of(Short.valueOf(desc));
+        // } else if (targetType.isIntegerType()) {
+        //     return Literal.of(Integer.valueOf(desc));
+        // } else if (targetType.isBigIntType()) {
+        //     return Literal.of(Long.valueOf(desc));
+        // } else if (targetType.isLargeIntType()) {
+        //     return Literal.of(new BigDecimal(desc).toBigInteger());
+        // } else if (targetType.isFloatType()) {
+        //     return Literal.of(Double.valueOf(desc).floatValue());
+        // } else if (targetType.isDoubleType()) {
+        //     return Literal.of(Double.parseDouble(desc));
+        // } else if (targetType.isCharType()) {
+        //     if (((CharType) targetType).getLen() >= desc.length()) {
+        //         return new CharLiteral(desc, ((CharType) targetType).getLen());
+        //     }
+        // } else if (targetType.isVarcharType()) {
+        //     if (this.dataType.isDoubleType() || this.dataType.isFloatType()) {
+        //         int pointZeroIndex = findPointZeroIndex(desc);
+        //         if (pointZeroIndex > -1) {
+        //             return new VarcharLiteral(
+        //                 desc.substring(0, pointZeroIndex), ((VarcharType) targetType).getLen());
+        //         }
+        //     }
+        //     return new VarcharLiteral(desc, ((VarcharType) targetType).getLen());
+        // } else if (targetType instanceof StringType) {
+        //     if (this.dataType.isDoubleType() || this.dataType.isFloatType()) {
+        //         int pointZeroIndex = findPointZeroIndex(desc);
+        //         if (pointZeroIndex > -1) {
+        //             return new StringLiteral(desc.substring(0, pointZeroIndex));
+        //         }
+        //     }
+        //     return new StringLiteral(desc);
+        // } else if (targetType.isDateType()) {
+        //     return new DateLiteral(desc);
+        // } else if (targetType.isDateTimeType()) {
+        //     return new DateTimeLiteral(desc);
+        // } else if (targetType.isDecimalV2Type()) {
+        //     return new DecimalLiteral((DecimalV2Type) targetType, new BigDecimal(desc));
+        // } else if (targetType.isDecimalV3Type()) {
+        //     return new DecimalV3Literal((DecimalV3Type) targetType, new BigDecimal(desc));
+        // } else if (targetType.isDateV2Type()) {
+        //     return new DateV2Literal(desc);
+        // } else if (targetType.isDateTimeV2Type()) {
+        //     return new DateTimeV2Literal((DateTimeV2Type) targetType, desc);
+        // } else if (targetType.isJsonType()) {
+        //     return new JsonLiteral(desc);
+        // } else if (targetType.isIPv4Type()) {
+        //     return new IPv4Literal(desc);
+        // } else if (targetType.isIPv6Type()) {
+        //     return new IPv6Literal(desc);
+        // }
+        // throw new AnalysisException("cannot cast " + desc + " from type "
+        // + this.dataType + " to type " + targetType);
+        throw new AnalysisException(String.format("Cast from %s to %s not supported", this, targetType));
     }
 
     private static int findPointZeroIndex(String str) {

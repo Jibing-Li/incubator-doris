@@ -25,6 +25,8 @@ import org.apache.doris.nereids.types.DateTimeType;
 import org.apache.doris.nereids.types.DateTimeV2Type;
 import org.apache.doris.nereids.types.DateType;
 import org.apache.doris.nereids.types.DateV2Type;
+import org.apache.doris.nereids.types.DoubleType;
+import org.apache.doris.nereids.types.FloatType;
 import org.apache.doris.nereids.types.coercion.IntegralType;
 import org.apache.doris.qe.ConnectContext;
 
@@ -42,19 +44,21 @@ public abstract class StringLikeLiteral extends Literal implements ComparableLit
     public static final int CHINESE_CHAR_BYTE_LENGTH = 4;
     public final String value;
 
-    public final String strictRegex = "^(?:(?<year1>\\d{2}|\\d{4})-(?<month1>\\d{1,2})-(?<date1>\\d{1,2})"
+    public final String toDateStrictRegex = "^(?:(?<year1>\\d{2}|\\d{4})-(?<month1>\\d{1,2})-(?<date1>\\d{1,2})"
             + "|(?<year2>\\d{2}|\\d{4})(?<month2>\\d{2})(?<date2>\\d{2}))"
             + "(?:(?:[T ])"
             + "(?:(?:(?<hour1>\\d{1,2})(?::(?<minute1>\\d{1,2})(?::(?<second1>\\d{1,2})(?<fraction1>\\.\\d*)?)?)?)"
             + "|(?:(?<hour2>\\d{2})(?:(?<minute2>\\d{2})(?:(?<second2>\\d{2})(?<fraction2>\\.\\d*)?)?)?)))?"
             + "(?:\\s*(?<tz>(?:[+-](?:\\d{1,2})(?::?(?:00|30|45))?)"
             + "|(?:(?i)(?:CST|UTC|GMT|ZULU|Z|(?:[A-Za-z_]+/[A-Za-z_]+)))))?$";
-    public final String unStrictRegex
+    public final String toDateUnStrictRegex
             = "^\\s*((?<year>\\d{2,4})[^a-zA-Z\\d](?<month>\\d{1,2})[^a-zA-Z\\d](?<date>\\d{1,2}))"
             + "(?:(?:[ T])"
             + "(?:(?<hour>\\d{1,2})[^a-zA-Z\\d](?<minute>\\d{1,2})[^a-zA-Z\\d]"
             + "(?<second>\\d{1,2})(?<fraction>\\.\\d*)?))?"
             + "(?:\\s*(?<tz>[+-]\\d{1,2}(?::?(?:00|30|45))?|(?i)(?:CST|UTC|GMT|ZULU|Z|[A-Za-z_]+/[A-Za-z_]+)))?\\s*$";
+    public final String toDoubleRegex = "^\\s*(?:[+-]?(?:(?:[0-9]+|[0-9]+\\.[0-9]*|[0-9]*\\.[0-9]+)(?:[eE][+-]?[0-9]+)?"
+            + "|(?i)(?:INF|INFINITY)|(?i)NAN))\\s*$";
 
     public StringLikeLiteral(String value, DataType dataType) {
         super(dataType);
@@ -108,9 +112,12 @@ public abstract class StringLikeLiteral extends Literal implements ComparableLit
             }
             DateTimeV2Literal datetime = (DateTimeV2Literal) expression;
             return new DateV2Literal(datetime.year, datetime.month, datetime.day);
-        }
-        if (targetType instanceof DateTimeType || targetType instanceof DateTimeV2Type) {
+        } else if (targetType instanceof DateTimeType || targetType instanceof DateTimeV2Type) {
             return castToDateTime(targetType, strictCast);
+        } else if (targetType instanceof FloatType) {
+            return castToFloat(strictCast);
+        } else if (targetType instanceof DoubleType) {
+            return castToDouble(strictCast);
         }
         return super.uncheckedCastTo(targetType);
     }
@@ -143,9 +150,51 @@ public abstract class StringLikeLiteral extends Literal implements ComparableLit
         }
     }
 
+    protected Expression castToFloat(boolean strictCast) {
+        Pattern pattern = Pattern.compile(toDoubleRegex);
+        String trimmedValue = value.trim();
+        if (pattern.matcher(trimmedValue).matches()) {
+            if (isPosInf(trimmedValue)) {
+                return Literal.of(Float.POSITIVE_INFINITY);
+            }
+            if (isNegInf(trimmedValue)) {
+                return Literal.of(Float.NEGATIVE_INFINITY);
+            }
+            if (isNaN(trimmedValue)) {
+                return Literal.of(Float.NaN);
+            }
+            return Literal.of(Float.parseFloat(value.trim()));
+        } else if (strictCast) {
+            throw new AnalysisException(String.format("%s can't cast to float in strict mode.", value));
+        } else {
+            return new NullLiteral(FloatType.INSTANCE);
+        }
+    }
+
+    protected Expression castToDouble(boolean strictCast) {
+        Pattern pattern = Pattern.compile(toDoubleRegex);
+        String trimmedValue = value.trim();
+        if (pattern.matcher(trimmedValue).matches()) {
+            if (isPosInf(trimmedValue)) {
+                return Literal.of(Double.POSITIVE_INFINITY);
+            }
+            if (isNegInf(trimmedValue)) {
+                return Literal.of(Double.NEGATIVE_INFINITY);
+            }
+            if (isNaN(trimmedValue)) {
+                return Literal.of(Double.NaN);
+            }
+            return Literal.of(Double.parseDouble(value.trim()));
+        } else if (strictCast) {
+            throw new AnalysisException(String.format("%s can't cast to double in strict mode.", value));
+        } else {
+            return new NullLiteral(DoubleType.INSTANCE);
+        }
+    }
+
     protected Expression castToDateTime(DataType targetType, boolean strictCast) {
         try {
-            Pattern strictPattern = Pattern.compile(strictRegex);
+            Pattern strictPattern = Pattern.compile(toDateStrictRegex);
             Matcher strictMatcher = strictPattern.matcher(value);
             if (strictMatcher.matches()) {
                 String year = strictMatcher.group("year1") == null
@@ -165,7 +214,7 @@ public abstract class StringLikeLiteral extends Literal implements ComparableLit
                 String tz = strictMatcher.group("tz");
                 return getDateTimeLiteral(year, month, date, hour, minute, second, fraction, tz, targetType);
             } else if (!strictCast) {
-                Matcher unStrictMatcher = Pattern.compile(unStrictRegex).matcher(value);
+                Matcher unStrictMatcher = Pattern.compile(toDateUnStrictRegex).matcher(value);
                 if (unStrictMatcher.matches()) {
                     String year = unStrictMatcher.group("year");
                     String month = unStrictMatcher.group("month");

@@ -20,8 +20,12 @@ package org.apache.doris.nereids.trees.expressions.literal;
 import org.apache.doris.analysis.FloatLiteral;
 import org.apache.doris.analysis.LiteralExpr;
 import org.apache.doris.catalog.Type;
+import org.apache.doris.nereids.exceptions.AnalysisException;
+import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.visitor.ExpressionVisitor;
+import org.apache.doris.nereids.types.DataType;
 import org.apache.doris.nereids.types.DoubleType;
+import org.apache.doris.nereids.types.FloatType;
 
 import java.math.BigDecimal;
 
@@ -85,5 +89,13 @@ public class DoubleLiteral extends FractionalLiteral {
         }
 
         return formatted;
+    }
+
+    @Override
+    protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
+        if (targetType instanceof FloatType) {
+            return new org.apache.doris.nereids.trees.expressions.literal.FloatLiteral((float) value);
+        }
+        return super.uncheckedCastTo(targetType);
     }
 }

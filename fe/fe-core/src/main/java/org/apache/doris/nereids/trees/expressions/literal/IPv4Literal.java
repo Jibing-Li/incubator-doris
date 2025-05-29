@@ -19,11 +19,8 @@ package org.apache.doris.nereids.trees.expressions.literal;
 
 import org.apache.doris.analysis.LiteralExpr;
 import org.apache.doris.nereids.exceptions.AnalysisException;
-import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.visitor.ExpressionVisitor;
-import org.apache.doris.nereids.types.DataType;
 import org.apache.doris.nereids.types.IPv4Type;
-import org.apache.doris.nereids.types.coercion.IntegralType;
 
 import java.util.regex.Pattern;
 
@@ -60,15 +57,6 @@ public class IPv4Literal extends Literal implements ComparableLiteral {
     @Override
     public <R, C> R accept(ExpressionVisitor<R, C> visitor, C context) {
         return visitor.visitIPv4Literal(this, context);
-    }
-
-    @Override
-    protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
-        if (targetType instanceof IntegralType) {
-            throw new AnalysisException("IP type can't cast to Integral.");
-
-        }
-        return super.uncheckedCastTo(targetType);
     }
 
     @Override

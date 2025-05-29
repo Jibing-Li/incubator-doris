@@ -24,12 +24,15 @@ import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.visitor.ExpressionVisitor;
 import org.apache.doris.nereids.types.DataType;
 import org.apache.doris.nereids.types.DateType;
+import org.apache.doris.nereids.types.DoubleType;
+import org.apache.doris.nereids.types.FloatType;
 import org.apache.doris.nereids.types.SmallIntType;
 import org.apache.doris.nereids.types.TinyIntType;
 import org.apache.doris.nereids.types.coercion.DateLikeType;
 import org.apache.doris.nereids.types.coercion.IntegralType;
 import org.apache.doris.nereids.util.DateTimeFormatterUtils;
 import org.apache.doris.nereids.util.DateUtils;
+import org.apache.doris.qe.ConnectContext;
 
 import com.google.common.collect.ImmutableSet;
 
@@ -597,6 +600,7 @@ public class DateLiteral extends Literal implements ComparableLiteral {
 
     @Override
     protected Expression uncheckedCastTo(DataType targetType) throws AnalysisException {
+        boolean strictCast = ConnectContext.get().getSessionVariable().enableStrictCast();
         if (targetType instanceof IntegralType) {
             if (targetType instanceof TinyIntType || targetType instanceof SmallIntType) {
                 throw new AnalysisException("Date can't cast to TinyInt or SmallInt.");
@@ -608,6 +612,16 @@ public class DateLiteral extends Literal implements ComparableLiteral {
             } else if (targetType.isLargeIntType()) {
                 return new LargeIntLiteral(new BigInteger(String.valueOf(year * 10000 + month * 100 + day)));
             }
+        } else if (targetType instanceof FloatType) {
+            if (strictCast) {
+                throw new AnalysisException("DateType can't cast to FloatType in strict mode.");
+            }
+            return new FloatLiteral(year * 1000 + month * 100 + day);
+        } else if (targetType instanceof DoubleType) {
+            if (strictCast) {
+                throw new AnalysisException("DateType can't cast to DoubleType in strict mode.");
+            }
+            return new DoubleLiteral(year * 1000 + month * 100 + day);
         }
         return super.uncheckedCastTo(targetType);
     }

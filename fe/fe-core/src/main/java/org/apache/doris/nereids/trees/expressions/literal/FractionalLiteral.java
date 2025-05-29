@@ -20,6 +20,8 @@ package org.apache.doris.nereids.trees.expressions.literal;
 import org.apache.doris.nereids.exceptions.AnalysisException;
 import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.types.DataType;
+import org.apache.doris.nereids.types.DoubleType;
+import org.apache.doris.nereids.types.FloatType;
 import org.apache.doris.nereids.types.coercion.DateLikeType;
 import org.apache.doris.nereids.types.coercion.IntegralType;
 import org.apache.doris.qe.ConnectContext;
@@ -91,6 +93,10 @@ public abstract class FractionalLiteral extends NumericLiteral {
                     return new NullLiteral(targetType);
                 }
             }
+        } else if (targetType instanceof FloatType) {
+            return new FloatLiteral(((BigDecimal) getValue()).floatValue());
+        } else if (targetType instanceof DoubleType) {
+            return new DoubleLiteral(((BigDecimal) getValue()).doubleValue());
         }
         return super.uncheckedCastTo(targetType);
     }
