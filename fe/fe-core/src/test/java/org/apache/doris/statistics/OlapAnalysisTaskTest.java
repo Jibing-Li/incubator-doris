@@ -131,23 +131,28 @@ public class OlapAnalysisTaskTest {
             }
 
             @Mock
-            protected void getSampleParams(Map<String, String> params, long tableRowCount) {}
+            void getSampleParams(Map<String, String> params, long tableRowCount) {}
 
             @Mock
-            protected boolean useLinearAnalyzeTemplate() {
+            boolean useLinearAnalyzeTemplate() {
                 return true;
             }
 
                 @Mock
             public void runQuery(String sql) {
-                Assertions.assertEquals("SELECT CONCAT(30001, '-', -1, '-', 'null') AS `id`, "
+                Assertions.assertEquals("WITH cte1 AS (SELECT `null` FROM `catalogName`.`${dbName}`.`null`  "
+                        + "${sampleHints} ${limit} ), "
+                        + "cte2 AS (SELECT CONCAT(30001, '-', -1, '-', 'null') AS `id`, "
                         + "10001 AS `catalog_id`, 20001 AS `db_id`, 30001 AS `tbl_id`, -1 AS `idx_id`, "
-                        + "'null' AS `col_id`, NULL AS `part_id`, ${rowCount} AS `row_count`, "
-                        + "${ndvFunction} as `ndv`, ROUND(SUM(CASE WHEN `null` IS NULL THEN 1 ELSE 0 END) * ${scaleFactor}) AS `null_count`, "
-                        + "SUBSTRING(CAST('1' AS STRING), 1, 1024) AS `min`, SUBSTRING(CAST('2' AS STRING), 1, 1024) AS `max`, "
-                        + "COUNT(1) * 4 * ${scaleFactor} AS `data_size`, NOW() FROM "
-                        + "( SELECT * FROM `catalogName`.`${dbName}`.`null`  ${sampleHints} ${limit}) as t ", sql);
-                return;
+                        + "'null' AS `col_id`, NULL AS `part_id`, ${rowCount} AS `row_count`, ${ndvFunction} as `ndv`, "
+                        + "ROUND(SUM(CASE WHEN `null` IS NULL THEN 1 ELSE 0 END) * ${scaleFactor}) AS `null_count`, "
+                        + "SUBSTRING(CAST('1' AS STRING), 1, 1024) AS `min`, "
+                        + "SUBSTRING(CAST('2' AS STRING), 1, 1024) AS `max`, "
+                        + "COUNT(1) * 4 * ${scaleFactor} AS `data_size`, NOW() FROM cte1), "
+                        + "cte3 AS (SELECT GROUP_CONCAT(CONCAT(t.`column_key`, \":\", ROUND(t.`count` * ${scaleFactor} * 100.0 / ${rowCount}, 2)), \";\") as `hot_value` "
+                        + "FROM (SELECT ${subStringColName} as `column_key`, COUNT(1) AS `count` "
+                        + "FROM cte1 WHERE `null` IS NOT NULL GROUP BY `column_key` ORDER BY `count` DESC LIMIT 3) t) "
+                        + "SELECT * FROM cte2 CROSS JOIN cte3", sql);
             }
         };
 
@@ -166,21 +171,24 @@ public class OlapAnalysisTaskTest {
         new MockUp<OlapAnalysisTask>() {
             @Mock
             public void runQuery(String sql) {
-                Assertions.assertEquals("SELECT CONCAT('30001', '-', '-1', '-', 'null') AS `id`, "
+                Assertions.assertEquals("WITH cte1 AS (SELECT t0.`colValue` as `column_key`, COUNT(1) as `count`, "
+                        + "SUM(`len`) as `column_length` FROM (SELECT ${subStringColName} AS `colValue`, "
+                        + "LENGTH(`null`) as `len` FROM `catalogName`.`${dbName}`.`null`  "
+                        + "${sampleHints} ${limit}) as `t0`  GROUP BY `t0`.`colValue`), "
+                        + "cte2 AS ( SELECT CONCAT('30001', '-', '-1', '-', 'null') AS `id`, "
                         + "10001 AS `catalog_id`, 20001 AS `db_id`, 30001 AS `tbl_id`, -1 AS `idx_id`, "
                         + "'null' AS `col_id`, NULL AS `part_id`, ${rowCount} AS `row_count`, ${ndvFunction} as `ndv`, "
                         + "IFNULL(SUM(IF(`t1`.`column_key` IS NULL, `t1`.`count`, 0)), 0) * ${scaleFactor} as `null_count`, "
-                        + "SUBSTRING(CAST('1' AS STRING), 1, 1024) AS `min`, SUBSTRING(CAST('2' AS STRING), 1, 1024) AS `max`, "
-                        + "COUNT(1) * 4 * ${scaleFactor} AS `data_size`, NOW() "
-                        + "FROM (     SELECT t0.`colValue` as `column_key`, COUNT(1) as `count`, SUM(`len`) as `column_length`     "
-                        + "FROM         (SELECT ${subStringColName} AS `colValue`, LENGTH(`null`) as `len`         "
-                        + "FROM `catalogName`.`${dbName}`.`null`  ${sampleHints} ${limit}) as `t0`        "
-                        + "    GROUP BY `t0`.`colValue` ) as `t1` ", sql);
-                return;
+                        + "SUBSTRING(CAST('1' AS STRING), 1, 1024) AS `min`, "
+                        + "SUBSTRING(CAST('2' AS STRING), 1, 1024) AS `max`, "
+                        + "COUNT(1) * 4 * ${scaleFactor} AS `data_size`, NOW() FROM cte1 t1), "
+                        + "cte3 AS (SELECT GROUP_CONCAT(CONCAT(t2.`column_key`, \":\", ROUND(t2.`count` * ${scaleFactor} * 100.0 / ${rowCount}, 2)), \";\") as `hot_value` "
+                        + "FROM (SELECT `column_key`, `count` FROM cte1 WHERE `column_key` IS NOT NULL ORDER BY `count` DESC LIMIT 3) t2) "
+                        + "SELECT * FROM cte2 CROSS JOIN cte3", sql);
             }
 
             @Mock
-            protected boolean useLinearAnalyzeTemplate() {
+            boolean useLinearAnalyzeTemplate() {
                 return false;
             }
         };

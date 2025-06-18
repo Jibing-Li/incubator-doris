@@ -84,7 +84,8 @@ public class StatisticsRepository {
 
     private static final String INSERT_INTO_COLUMN_STATISTICS_FOR_ALTER = "INSERT INTO "
             + FULL_QUALIFIED_COLUMN_STATISTICS_NAME + " VALUES('${id}', ${catalogId}, ${dbId}, ${tblId}, '${idxId}',"
-            + "'${colId}', ${partId}, ${count}, ${ndv}, ${nullCount}, ${min}, ${max}, ${dataSize}, NOW())";
+            + "'${colId}', ${partId}, ${count}, ${ndv}, ${nullCount}, ${min}, ${max}, ${dataSize}, NOW(), "
+            + "${hotValue})";
 
     private static final String DELETE_TABLE_STATISTICS_BY_COLUMN_TEMPLATE = "DELETE FROM "
             + FeConstants.INTERNAL_DB_NAME + "." + StatisticConstants.TABLE_STATISTIC_TBL_NAME
@@ -322,6 +323,7 @@ public class StatisticsRepository {
         String min = alterColumnStatsCommand.getValue(StatsType.MIN_VALUE);
         String max = alterColumnStatsCommand.getValue(StatsType.MAX_VALUE);
         String dataSize = alterColumnStatsCommand.getValue(StatsType.DATA_SIZE);
+        String hotValue = alterColumnStatsCommand.getValue(StatsType.HOT_VALUE);
         long indexId = alterColumnStatsCommand.getIndexId();
         if (rowCount == null) {
             throw new RuntimeException("Row count is null.");
@@ -355,6 +357,7 @@ public class StatisticsRepository {
                 }
             }
         }
+        builder.setHotValue(hotValue == null ? "null" : hotValue);
 
         ColumnStatistic columnStatistic = builder.build();
         Map<String, String> params = new HashMap<>();
@@ -370,6 +373,7 @@ public class StatisticsRepository {
         params.put("min", min == null ? "NULL" : "'" + StatisticsUtil.escapeSQL(min) + "'");
         params.put("max", max == null ? "NULL" : "'" + StatisticsUtil.escapeSQL(max) + "'");
         params.put("dataSize", String.valueOf(columnStatistic.dataSize));
+        params.put("hotValue", "'" + columnStatistic.hotValue + "'");
 
         if (partitionIds.isEmpty()) {
             // update table granularity statistics
