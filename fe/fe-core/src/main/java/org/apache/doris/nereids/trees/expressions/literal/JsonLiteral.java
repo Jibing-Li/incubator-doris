@@ -23,9 +23,16 @@ import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.types.DataType;
 import org.apache.doris.nereids.types.JsonType;
 
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+
+import java.io.IOException;
 
 /**
  * literal for json type.
@@ -35,6 +42,13 @@ public class JsonLiteral extends Literal {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final String value;
+
+    static {
+        SimpleModule module = new SimpleModule();
+        module.addDeserializer(Object.class, new NumberToStringDeserializer());
+        MAPPER.registerModule(module);
+        MAPPER.disable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
+    }
 
     /**
      * constructor, will check value.
@@ -51,6 +65,20 @@ public class JsonLiteral extends Literal {
             throw new AnalysisException("Invalid jsonb literal: ''");
         } else {
             this.value = jsonNode.toString();
+        }
+    }
+
+    static class NumberToStringDeserializer extends StdDeserializer<Object> {
+        protected NumberToStringDeserializer() {
+            super(Object.class);
+        }
+
+        @Override
+        public Object deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            if (p.getCurrentToken().isNumeric()) {
+                return p.getText();
+            }
+            return p.readValueAs(Object.class);
         }
     }
 
