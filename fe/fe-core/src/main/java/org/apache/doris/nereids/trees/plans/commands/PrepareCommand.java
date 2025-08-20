@@ -124,6 +124,9 @@ public class PrepareCommand extends Command {
         } else {
             slots = executor.planPrepareStatementSlots();
         }
+        if (!statementContext.isShortCircuitQuery()) {
+            throw new org.apache.doris.common.UserException("Only support prepare InsertStmt and Point query");
+        }
         // register prepareStmt
         if (LOG.isDebugEnabled()) {
             LOG.debug("add prepared statement {}, isBinaryProtocol {}",

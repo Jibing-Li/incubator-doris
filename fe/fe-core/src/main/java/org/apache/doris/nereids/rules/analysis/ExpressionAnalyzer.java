@@ -675,10 +675,10 @@ public class ExpressionAnalyzer extends SubExprAnalyzer<ExpressionRewriteContext
         }
         Expression realExpr = context.cascadesContext.getStatementContext()
                     .getIdToPlaceholderRealExpr().get(placeholder.getPlaceholderId());
-        // In prepare stage, the realExpr has not been set, set it to NullLiteral so that we can plan the statement
+        // In prepare stage, the realExpr has not been set, set it to StringLiteral so that we can plan the statement
         // and get the output slots in prepare stage, which is required by Mysql api definition.
         if (realExpr == null && context.cascadesContext.getStatementContext().isPrepareStage()) {
-            realExpr = new NullLiteral();
+            realExpr = new StringLiteral("PlaceHolder");
         }
         return visit(realExpr, context);
     }
