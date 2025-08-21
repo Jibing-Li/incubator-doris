@@ -114,27 +114,24 @@ public class PrepareCommand extends Command {
         }
         StatementContext statementContext = ctx.getStatementContext();
         statementContext.setPrepareStage(true);
-        List<Slot> slots;
+        List<Slot> slots = Lists.newArrayList();
         if (logicalPlan instanceof Command) {
-            ResultSetMetaData md = ((Command) logicalPlan).getResultSetMetaData();
-            slots = Lists.newArrayList();
-            for (Column c : md.getColumns()) {
-                slots.add(new SlotReference(c.getName(), DataType.fromCatalogType(c.getType())));
+            if (!(logicalPlan instanceof InsertIntoTableCommand)) {
+                throw new org.apache.doris.common.UserException("Only support prepare InsertStmt and Point query");
+            }
+            if (((InsertIntoTableCommand) logicalPlan).getLabelName().isPresent()) {
+                throw new org.apache.doris.common.UserException("Only support prepare InsertStmt without label now");
             }
         } else {
             slots = executor.planPrepareStatementSlots();
-        }
-        if (!statementContext.isShortCircuitQuery()) {
-            throw new org.apache.doris.common.UserException("Only support prepare InsertStmt and Point query");
+            if (!statementContext.isShortCircuitQuery()) {
+                throw new org.apache.doris.common.UserException("Only support prepare InsertStmt and Point query");
+            }
         }
         // register prepareStmt
         if (LOG.isDebugEnabled()) {
             LOG.debug("add prepared statement {}, isBinaryProtocol {}",
                     name, ctx.getCommand() == MysqlCommand.COM_STMT_PREPARE);
-        }
-        if (logicalPlan instanceof InsertIntoTableCommand
-                    && ((InsertIntoTableCommand) logicalPlan).getLabelName().isPresent()) {
-            throw new org.apache.doris.common.UserException("Only support prepare InsertStmt without label now");
         }
         ctx.addPreparedStatementContext(name,
                 new PreparedStatementContext(this, ctx, ctx.getStatementContext(), name));
