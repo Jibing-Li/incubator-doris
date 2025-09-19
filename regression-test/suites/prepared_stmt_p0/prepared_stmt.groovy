@@ -328,7 +328,8 @@ suite("test_prepared_stmt", "nonConcurrent") {
         stmt_read.setString(2, "DAY")
         qe_select25 stmt_read
 
-        sql """ CREATE TABLE `table_20_undef_partitions2_keys3_properties4_distributed_by54` (
+        sql """drop table if exists table_20_undef_partitions2_keys3_properties4_distributed_by54"""
+        sql """ CREATE TABLE IF NOT EXISTS `table_20_undef_partitions2_keys3_properties4_distributed_by54` (
               `col_int_undef_signed` int NULL,
               `col_int_undef_signed2` int NULL,
               `pk` int NULL
