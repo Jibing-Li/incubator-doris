@@ -354,7 +354,7 @@ suite("test_prepared_stmt", "nonConcurrent") {
         stmt_read = prepareStatement "select min ( pk - ? ) pk , pk as pk from table_20_undef_partitions2_keys3_properties4_distributed_by54 tbl_alias1 group by pk having ( pk >= pk ) or ( round ( sign ( sign ( pk ) ) ) - ? < ? ) order by pk "
         stmt_read.setString(1, "1")
         stmt_read.setString(2, "2")
-        stmt_read.setString(2, "3")
+        stmt_read.setString(3, "3")
         qe_select26 stmt_read
     }
 
