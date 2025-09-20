@@ -274,6 +274,7 @@ public class StatementContext implements Closeable {
     private final Set<List<String>> materializationRewrittenSuccessSet = new HashSet<>();
 
     private boolean isInsert = false;
+    private boolean isStreamLoad = false;
 
     public StatementContext() {
         this(ConnectContext.get(), null, 0);
@@ -993,5 +994,13 @@ public class StatementContext implements Closeable {
 
     public boolean isInsert() {
         return isInsert;
+    }
+
+    public void setIsStreamLoad(boolean isStreamLoad) {
+        this.isStreamLoad = isStreamLoad;
+    }
+
+    public boolean isStreamLoad() {
+        return isStreamLoad;
     }
 }

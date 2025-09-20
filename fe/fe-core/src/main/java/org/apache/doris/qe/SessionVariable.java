@@ -5425,7 +5425,7 @@ public class SessionVariable implements Serializable, Writable {
         ConnectContext connectContext = ConnectContext.get();
         if (connectContext != null) {
             StatementContext statementContext = connectContext.getStatementContext();
-            if (statementContext != null && statementContext.isInsert()) {
+            if (statementContext != null && statementContext.isInsert() && !statementContext.isStreamLoad()) {
                 return connectContext.getSessionVariable().enableInsertStrict;
             }
             return connectContext.getSessionVariable().enableStrictCast;

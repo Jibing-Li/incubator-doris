@@ -2191,6 +2191,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
             }
             StmtExecutor executor = new StmtExecutor(ctx, originStmt);
             httpStreamParams = executor.generateHttpStreamPlan(ctx.queryId());
+            ctx.getStatementContext().setIsStreamLoad(true);
 
             Coordinator coord = new Coordinator(ctx, executor.planner());
             coord.setLoadMemLimit(request.getExecMemLimit());
@@ -2234,7 +2235,6 @@ public class FrontendServiceImpl implements FrontendService.Iface {
             ctx.getSessionVariable().enableMemtableOnSinkNode = Config.stream_load_default_memtable_on_sink_node;
         }
         ctx.getSessionVariable().groupCommit = request.getGroupCommitMode();
-        ctx.getSessionVariable().setEnableInsertStrict(false);
         if (request.isSetPartialUpdate() && !request.isPartialUpdate()) {
             ctx.getSessionVariable().setEnableUniqueKeyPartialUpdate(false);
         }
