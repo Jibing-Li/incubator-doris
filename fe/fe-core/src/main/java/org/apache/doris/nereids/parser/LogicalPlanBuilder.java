@@ -3195,7 +3195,7 @@ public class LogicalPlanBuilder extends DorisParserBaseVisitor<Object> {
             expression = Optional.of(getExpression(ctx.expression()));
             // todo: use isConstant() to resolve Function in expression; currently we only
             //  support literal expression
-            if (!expression.get().isLiteral()) {
+            if (!expression.get().isLiteral() && !(expression.get() instanceof Placeholder)) {
                 throw new ParseException("Unsupported expression in WindowFrame : " + expression, ctx);
             }
         }
